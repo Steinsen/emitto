@@ -6,8 +6,10 @@
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: no-referrer
-  # capture="environment" på filväljaren behöver camera=(self). Inget annat behövs.
-  Permissions-Policy: camera=(self), microphone=(), geolocation=(), usb=(), payment=()
+  # Sidan rör aldrig kameran själv – klippet kommer via filväljaren, och spelar
+  # användaren in där är det OS:ets kamera-app, inte den här sidan. Öppna camera
+  # igen den dagen appen får en egen inspelning med getUserMedia.
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), usb=(), payment=()
   # CSP:n är den tekniska motsvarigheten till löftet "videon lämnar aldrig enheten":
   # connect-src listar de enda ställen sidan får prata med, och klippet (blob:) kan
   # inte skickas någonstans. Vidga inte den raden utan att tänka efter.
