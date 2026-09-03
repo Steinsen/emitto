@@ -22,6 +22,7 @@ tränare i loopen. Gränssnittet finns på svenska och engelska.
 | `analysis.js` | hittar faser och räknar mätvärden ur ledpunkter | fasdetektering är fel |
 | `rules.js` | riktvärden, prioritering, feedbacktexter på båda språken | gränser, texter, ordning |
 | `i18n.js` | gränssnittets strängar, språkval och språkdetektering | UI-texter, nytt språk |
+| `test-units.mjs` | kontroller som inte behöver klipp | hastighet, prioritering, språk |
 | `logo.svg`, `icon.svg`, `fonts/` | varumärke | aldrig utan anledning |
 | `wrangler.toml`, `_headers`, `.assetsignore` | deploy: projekt, headers/CSP, vad som inte publiceras | deployen ändras |
 
@@ -36,6 +37,7 @@ beskriver: ändrar du ett riktvärde ska texten bredvid ändras i samma fil.
 
 ```
 npx serve .              # lokal server (file:// fungerar inte med ES-moduler)
+node test-units.mjs      # kontroller utan testklipp: hastighetsgissning, prioritering, språknycklar
 node test.mjs            # kör analys + regler mot samples/*_lm.json, skriver faser och fokus
 npx wrangler deploy      # publicera
 npx wrangler dev --persist-to /tmp/emitto-dev   # enda sättet att testa _headers lokalt.
@@ -70,6 +72,27 @@ Bollen detekteras inte. Allt utgår från `ext` = avstånd axel→handled delat 
 Skjutarm = den handled som når högst. Vinklar räknas med bildens aspect ratio, annars blir de fel
 i stående video.
 
+## Uppspelningshastighet
+
+Slow motion är inte bara fel sekunder. `findPhases` letar i fönster mätta i sekunder
+(0,4 s sträckning, 1,5 s set point, 1,2 s lägsta läge), så ett fyrgångers klipp får fönster
+som täcker en fjärdedel av rörelsen och faserna spårar ur. Därför skalas tidsaxeln om
+**innan** faserna söks – `rescaleTime(sig, faktor)` – och allt nedströms räknar i verklig tid.
+`findPhases` är oförändrad och vet inget om hastighet.
+
+På Auto gissas faktorn ur hoppets fria fall (`estimateSpeed`). Höjden uttrycks i kroppslängder,
+så kameraavstånd och upplösning faller bort. Tyngdaccelerationen blir då 5,2–7,0 kroppslängder/s²
+för en kropp på 1,4–1,9 m; vi antar 1,65. Tid går i kvadrat, så kandidaterna 1×, 2×, 4× och 8×
+ligger en faktor två isär och spelarens verkliga längd spelar nästan ingen roll.
+
+Två krav sållar bort falska positiver: toppen måste nå 0,08 kroppslängder (~14 cm), och
+parabeln måste passa med r² ≥ 0,9. Utan höjdkravet skulle en mjuk tåhävning – långsammare än
+fritt fall – läsas som slow motion. Lämnar spelaren inte golvet svarar `estimateSpeed` null och
+appen räknar i normal fart och säger att den gjort det. Gissa inte där det inte går att veta.
+
+Hastigheten kan väljas före analysen och ändras i resultatet. Ändringen kör om allt från de
+redan avlästa ledpunkterna – MediaPipe går inte igen, bara de fyra bildrutorna hämtas på nytt.
+
 ## Flödet (app.js)
 
 Tre vyer i samma sida, ingen router: `#view-start` → `#view-loading` → `#view-result`. Analysen
@@ -101,6 +124,9 @@ och landade där – bedömningen av ett givet klipp är alltså oförändrad.
 - Riktvärdena gäller nu alla åldrar. För en tioåring är de för hårda. Kalibrera mot egna klipp
   innan du delar upp dem i band igen.
 - Fotställning i bredd syns inte från sidan. Säg inget om den.
+- På Auto läses bara de första 8 sekunderna av klippet. Ett 8×-klipp som är längre än så kan
+  ha skottet utanför fönstret – välj hastigheten manuellt då, för då sträcks fönstret ut lika
+  mycket. Att först gissa och sedan läsa om klippet vore ett andra svep till.
 - Seek-loopen i `app.js` kan vara långsam på telefon. Sänk `SAMPLE_FPS` (15 → 10) före andra
   optimeringar. `delegate: 'GPU'` kan behöva bli `'CPU'` på vissa Android-enheter.
 

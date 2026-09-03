@@ -6,7 +6,9 @@ analys körs i webbläsaren (MediaPipe Pose via WASM) – videon lämnar aldrig 
 Gränssnittet finns på svenska och engelska och väljer språk efter webbläsaren.
 
 ## Så används den
-Välj ett klipp. Analysen startar direkt. När den är klar visas faserna som en svepbar rad –
+Välj ett klipp. Analysen startar direkt. Är klippet filmat i slow motion kan du välja
+hastigheten innan, eller låta Auto gissa den ur hoppets fria fall – resultatsidan visar
+alltid vilken hastighet analysen räknar i, och där går den att ändra och räkna om. När den är klar visas faserna som en svepbar rad –
 tryck på en bild för att se vinklarna i leden och vilka som ligger utanför riktvärdet. Under
 faserna ligger listan med det som är värt att jobba på, i prioriterad ordning. Varje punkt
 fälls ut med ett plus: varför det inte är optimalt, en övning, och en rad pepp.
@@ -17,6 +19,7 @@ fälls ut med ett plus: varför det inte är optimalt, en övning, och en rad pe
 - `analysis.js` – hittar faserna (lägsta läge, set point, släpp, frånskjut, följning) och räknar mätvärden
 - `rules.js` – riktvärden, prioriteringslogik, feedbacktexter på båda språken. **Det är här du justerar.**
 - `i18n.js` – gränssnittets strängar och språkval
+- `test-units.mjs` – kontroller utan testklipp: `node test-units.mjs`
 
 ## Köra lokalt
 ES-moduler kräver en webbserver (inte `file://`):
@@ -73,6 +76,7 @@ påhittade fel.
 - Armbågsvinkeln är brusig när bollen skymmer armen. Lita mer på knä, tid och släpphöjd.
 - Riktvärdena är vuxenvärden och gäller alla åldrar. För de yngsta är de för hårda. Kalibrera mot egna klipp.
 - Skjutarmen gissas från vilken handled som når högst. Ingen manuell inställning finns.
+- Hastigheten kan bara gissas när spelaren hoppar. Vid straffkast får du välja den själv.
 
 ## Nästa steg
 1. Worker som får siffrorna och formulerar feedback med en LLM (bara ettan i prioriteringen).

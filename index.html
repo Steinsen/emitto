@@ -76,9 +76,16 @@
   @media (prefers-reduced-motion:reduce){#progress i{transition:none}}
 
   /* Språkväljare – två lägen, aldrig orange (inget "händer" här) */
-  .lang{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-  .lang button{background:var(--paper);color:var(--ink-soft);font-size:14px;font-weight:600;padding:7px 11px;border-radius:0;letter-spacing:.03em}
-  .lang button[aria-pressed=true]{background:var(--ink);color:#fff}
+  .lang,.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;width:fit-content}
+  .lang button,.seg button{background:var(--paper);color:var(--ink-soft);font-size:14px;font-weight:600;padding:7px 11px;border-radius:0;letter-spacing:.03em}
+  .lang button[aria-pressed=true],.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+  .seg button+button{border-left:1px solid var(--line)}
+
+  /* Hastighet – filens egenskap, inte spelarens. Lågmäld, Auto räcker för de flesta. */
+  .speed{display:grid;gap:7px;margin-top:16px;padding-top:15px;border-top:1px solid var(--line)}
+  .speed .k{font-size:15px;color:var(--ink-soft)}
+  .speedbox{background:var(--court);border-radius:var(--r);padding:14px 16px;display:grid;gap:10px;margin:0 0 26px}
+  .speedbox p{margin:0;font-size:15px;color:var(--ink-soft);max-width:56ch}
 
   /* Laddning – bollen studsar medan analysen går */
   #view-loading{padding:44px 0 8px;text-align:center}
@@ -157,6 +164,11 @@
         <li data-i18n="instr3"></li>
         <li data-i18n="instr4"></li>
       </ul>
+      <div class="speed">
+        <span class="k" data-i18n="speedLabel"></span>
+        <div class="seg" id="speed-start"></div>
+        <span class="k" data-i18n="speedHint"></span>
+      </div>
     </div>
     <div class="status" id="error"></div>
   </section>
@@ -178,6 +190,11 @@
     <p class="quiet" data-i18n="phaseHint"></p>
     <div class="phases" id="phases"></div>
     <div class="dots" id="dots"></div>
+
+    <div class="speedbox">
+      <p id="speednote"></p>
+      <div class="seg" id="speed-result"></div>
+    </div>
 
     <h2 data-i18n="workTitle"></h2>
     <p class="quiet" id="goodnote"></p>

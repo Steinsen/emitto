@@ -1,7 +1,7 @@
 // app.js – laddar klippet, kör MediaPipe Pose i webbläsaren, ritar resultatet.
 // Videon lämnar aldrig telefonen. Bara siffror skulle behöva skickas till en Worker senare.
 import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
-import { L, angle, pickSide, signals, findPhases, metrics } from './analysis.js';
+import { L, pickSide, signals, findPhases, metrics, estimateSpeed, rescaleTime } from './analysis.js';
 import { prioritize, issueList, allClear, goodNote, labelOf, unitIn, refOf, METRIC_PHASE } from './rules.js';
 import { t, getLang, setLang, applyStatic, LANGS } from './i18n.js';
 
@@ -21,9 +21,13 @@ const PHASES = [
   { key: 'follow',  label: 'phaseFollow' },
 ];
 
+// Uppspelningshastighet. 'auto' gissar ur hoppet; en siffra betyder att användaren vet.
+const SPEEDS = ['auto', 1, 2, 4, 8];
+let speedChoice = 'auto';
+
 let landmarker = null;
 let fileUrl = null;
-let last = null;   // sparat resultat, så språkbyte kan rita om utan att analysera igen
+let last = null;   // sparat resultat, så språkbyte och ny hastighet kan räkna om utan MediaPipe
 
 // ---------------------------------------------------------------- vyer och språk
 
@@ -45,10 +49,27 @@ function buildLangPicker() {
   }
 }
 
-// Ritar om allt som har text. Anropas vid start och vid språkbyte.
+const speedName = v => (v === 'auto' ? t('speedAuto') : v === 1 ? t('speedNormal') : `${v}×`);
+
+function buildSpeedPicker(el, onPick) {
+  el.innerHTML = '';
+  el.setAttribute('role', 'group');
+  el.setAttribute('aria-label', t('speedLabel'));
+  for (const v of SPEEDS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = speedName(v);
+    b.setAttribute('aria-pressed', String(v === speedChoice));
+    b.addEventListener('click', () => onPick(v));
+    el.appendChild(b);
+  }
+}
+
+// Ritar om allt som har text. Anropas vid start, vid språkbyte och när hastigheten ändras.
 function refresh() {
   applyStatic();
   buildLangPicker();
+  buildSpeedPicker($('speed-start'), v => { speedChoice = v; refresh(); });
   document.title = `Emitto – ${t('tag')}`;
   if (last) renderResult(last);
 }
@@ -100,22 +121,39 @@ async function analyze() {
   await new Promise(res => (video.readyState >= 1 ? res() : (video.onloadedmetadata = res)));
   $('loadmsg').textContent = t('loadingAnalyze');
 
-  const dur = Math.min(video.duration, MAX_SECONDS);
   const aspect = video.videoWidth / video.videoHeight;
+  // Är hastigheten vald i förväg vet vi hur mycket klippet är utsträckt och kan läsa
+  // lika många sekunder av rörelsen. På Auto vet vi inte, så vi tar de första åtta.
+  const span = Math.min(video.duration, MAX_SECONDS * (speedChoice === 'auto' ? 1 : speedChoice));
   const step = 1 / SAMPLE_FPS;
   const frames = [];
   let ts = 0;
-  for (let time = 0; time <= dur; time += step) {
+  for (let time = 0; time <= span; time += step) {
     await seek(time);
     ts += Math.round(step * 1000) + 1; // måste vara strikt ökande
     const res = landmarker.detectForVideo(video, ts);
     if (res.landmarks && res.landmarks[0]) frames.push({ t: time, lm: res.landmarks[0] });
-    bar.style.width = `${(time / dur) * 90}%`;
+    bar.style.width = `${(time / span) * 90}%`;
   }
   if (frames.length < 10) throw new Error('E_NO_PERSON');
 
-  const side = pickSide(frames, 'auto');
-  const sig = signals(frames, side, aspect);
+  await compute(frames, pickSide(frames, 'auto'), aspect);
+}
+
+// Hastigheten avgörs innan faserna söks. findPhases letar i fönster mätta i sekunder,
+// så en utsträckt tidsaxel skulle inte bara ge fel siffror utan fel faser.
+function resolveSpeed(sig) {
+  if (speedChoice !== 'auto') return { factor: speedChoice, source: 'manual' };
+  const est = estimateSpeed(sig);
+  return est ? { factor: est.factor, source: 'jump', est } : { factor: 1, source: 'assumed' };
+}
+
+// Räknar fram allt från redan avlästa ledpunkter. Körs om vid hastighetsbyte – MediaPipe
+// behöver inte gå igen, bara de fyra bildrutorna hämtas på nytt.
+async function compute(frames, side, aspect) {
+  const sig0 = signals(frames, side, aspect);
+  const speed = resolveSpeed(sig0);
+  const sig = rescaleTime(sig0, speed.factor);
   const ph = findPhases(sig);
   const m = metrics(sig, ph);
 
@@ -124,19 +162,36 @@ async function analyze() {
   const shots = [];
   for (const p of PHASES) {
     const idx = ph[p.key];
-    await seek(frames[idx].t);
+    await seek(frames[idx].t);   // videons egen tid, inte den omskalade
     const c = document.createElement('canvas');
     c.height = PHASE_H;
     c.width = Math.round(PHASE_H * aspect);
     c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
-    shots.push({ ...p, canvas: c, lm: frames[idx].lm, time: frames[idx].t });
+    shots.push({ ...p, canvas: c, lm: frames[idx].lm, time: sig[idx].t });
   }
   bar.style.width = '100%';
 
-  last = { shots, side, m, ph, prio: prioritize(m) };
+  last = { frames, side, aspect, shots, m, ph, speed, prio: prioritize(m) };
   renderResult(last);
   show('result');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function recalculate(choice) {
+  if (!last || choice === speedChoice) return;
+  speedChoice = choice;
+  const { frames, side, aspect } = last;
+  $('loadmsg').textContent = t('speedRecalc');
+  bar.style.width = '100%';
+  show('loading');
+  try {
+    await compute(frames, side, aspect);
+  } catch (e) {
+    const codes = { E_FEW_FRAMES: 'errTooFewFrames', E_NO_SHOT: 'errNoShot', E_NO_PERSON: 'errNoPerson' };
+    $('error').innerHTML = `<div class="error">${t(codes[e.message] || 'errNoShot')}</div>`;
+    last = null;
+    show('start');
+  }
 }
 
 // ---------------------------------------------------------------- ritning
@@ -225,7 +280,7 @@ function fmt(value, key) {
 }
 
 function renderResult(data) {
-  const { shots, side, m, ph, prio } = data;
+  const { shots, side, m, ph, prio, speed } = data;
   const lang = getLang();
   const byPhase = {};
   for (const g of prio.graded) (byPhase[METRIC_PHASE[g.key]] ||= []).push(g);
@@ -309,6 +364,14 @@ function renderResult(data) {
     <span class="dot ${g.status}"></span>
     <span>${labelOf(g.key, lang)}<br><span class="ref">${t('reference')} ${fmt(refOf(g.key).ok[0], g.key)}–${fmt(refOf(g.key).ok[1], g.key)}</span></span>
     <span class="val">${fmt(g.value, g.key)}</span></li>`).join('');
+
+  // Hastigheten analysen räknar i, och möjligheten att ändra den
+  const label = speed.factor === 1 ? t('speedNormalPhrase') : `${speed.factor}×`;
+  $('speednote').textContent =
+    speed.source === 'manual' ? t('speedManualNote')(label)
+    : speed.source === 'jump' ? t('speedFromJump')(label)
+    : t('speedAssumed');
+  buildSpeedPicker($('speed-result'), recalculate);
 
   // Förbehåll
   const lag = m.takeoffLag == null ? t('lagUnknown')
