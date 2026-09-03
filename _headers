@@ -1,5 +1,6 @@
-# Cloudflare Pages headers. Filen laddas inte upp som asset, den läses som konfiguration.
-# https://developers.cloudflare.com/pages/configuration/headers/
+# Headers för Workers static assets. Filen laddas inte upp som asset, den läses
+# som konfiguration. Samma format som Cloudflare Pages använder.
+# https://developers.cloudflare.com/workers/static-assets/headers/
 
 /*
   X-Content-Type-Options: nosniff

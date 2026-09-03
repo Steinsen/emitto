@@ -9,8 +9,8 @@ ungdomsspelare (ca 10–18) med tränare i loopen.
 - Statisk sida, inga ramverk, ingen build. ES-moduler direkt i webbläsaren.
 - All analys körs klientsidan med MediaPipe Pose (Tasks Vision, WASM). **Videon lämnar aldrig
   enheten** – det är ett produktlöfte, bryt det inte utan att fråga.
-- Deploy: Cloudflare Pages (`npx wrangler pages deploy .`). Framtida backend = Cloudflare Worker
-  som bara tar emot siffror, aldrig video.
+- Deploy: Cloudflare Workers med static assets (`npx wrangler deploy`), repo-roten som
+  assets-katalog. Framtida backend = `main` i samma Worker – bara siffror, aldrig video.
 
 ## Filer
 
@@ -21,6 +21,7 @@ ungdomsspelare (ca 10–18) med tränare i loopen.
 | `analysis.js` | hittar faser och räknar mätvärden ur ledpunkter | fasdetektering är fel |
 | `rules.js` | referensvärden per åldersband, prioritering, feedbacktexter | gränser, texter, ordning |
 | `logo.svg`, `icon.svg`, `fonts/` | varumärke | aldrig utan anledning |
+| `wrangler.toml`, `_headers`, `.assetsignore` | deploy: projekt, headers/CSP, vad som inte publiceras | deployen ändras |
 
 Håll isär de tre lagren: `analysis.js` vet inget om ålder eller texter, `rules.js` vet inget om
 landmarks, `app.js` vet inget om riktvärden.
@@ -30,7 +31,9 @@ landmarks, `app.js` vet inget om riktvärden.
 ```
 npx serve .              # lokal server (file:// fungerar inte med ES-moduler)
 node test.mjs            # kör analys + regler mot samples/*_lm.json, skriver faser och fokus
-npx wrangler pages deploy .
+npx wrangler deploy      # publicera
+npx wrangler dev --persist-to /tmp/emitto-dev   # enda sättet att testa _headers lokalt.
+                                                # utan --persist-to startar servern om i loop.
 ```
 
 ## Testdata och facit

@@ -1,5 +1,10 @@
-# Cloudflare Pages. Ingen build – hela repot är sajten.
-# Deploy: npx wrangler pages deploy .
+# Cloudflare Workers med static assets. Ingen build – repo-roten är sajten.
+# Deploy: npx wrangler deploy
 name = "emitto"
 compatibility_date = "2026-09-03"
-pages_build_output_dir = "."
+
+[assets]
+directory = "./"
+# När Workern för feedbacktexterna kommer: lägg till main = "worker.js" över
+# [assets]. Då ligger API:t på samma origin som sidan, och connect-src i
+# _headers kan förbli 'self' – inget nytt hål att öppna i CSP:n.

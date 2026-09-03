@@ -17,37 +17,41 @@ npx serve .
 ```
 Öppna på telefonen via datorns IP eller kör i desktop-webbläsare med ett uppladdat klipp.
 
-## Deploy på Cloudflare Pages
-Ingen build – repo-roten *är* sajten. Konfigurationen ligger i tre filer:
+## Deploy på Cloudflare Workers
+Ingen build – repo-roten *är* sajten, publicerad som en Worker med static assets.
+Konfigurationen ligger i tre filer:
 
-- `wrangler.toml` – projektnamn `emitto`, `pages_build_output_dir = "."`
+- `wrangler.toml` – projektnamn `emitto`, `[assets] directory = "./"`
+- `.assetsignore` – vad som *inte* publiceras. Workers static assets har ingen inbyggd
+  ignorerlista som Pages har, så utan raden `.git` där hamnar hela repohistoriken publikt
+  läsbar på domänen. Rör den bara för att lägga till, aldrig för att ta bort.
 - `_headers` – säkerhetsheaders, CSP och cache-regler
-- `_redirects` – skickar `/CLAUDE.md`, `/README.md` och `/wrangler.toml` till startsidan
-  (de skulle annars vara läsbara på domänen)
 
 Första gången:
 ```
 npx wrangler login
-npx wrangler pages project create emitto --production-branch main
-npx wrangler pages deploy .
+npx wrangler deploy
 ```
-Sedan räcker `npx wrangler pages deploy .`. Vill du ha deploy vid varje push: koppla repot i
-Cloudflare-dashboarden i stället, lämna build command tom och sätt output-katalog till `/`.
+Sedan räcker `npx wrangler deploy`. Kopplar du repot i dashboarden (Workers & Pages → emitto →
+Settings → Builds) körs samma kommando vid varje push till `main`.
 
-Lägg till `skott.steinsen.com` som custom domain i Pages-projektet (Pages → emitto → Custom
-domains). DNS ligger redan i Cloudflare, så CNAME:n skapas automatiskt.
+Custom domain: Workers & Pages → emitto → Settings → Domains & Routes → `skott.steinsen.com`.
 
-Testa headers och redirects lokalt innan deploy – `npx serve .` läser dem inte:
+### Testa headers lokalt
+`npx serve .` läser varken `_headers` eller `.assetsignore`. För det behövs wrangler:
 ```
-npx wrangler pages dev .
+npx wrangler dev --persist-to /tmp/emitto-dev
 ```
+`--persist-to` är inte valfritt. Utan den skriver wrangler sin lokala state till `.wrangler/`
+inne i assets-katalogen, filbevakaren ser skrivningen och servern startar om – i en loop som
+aldrig hinner svara på en request.
 
 ### CSP:n
 `connect-src` i `_headers` är den tekniska motsvarigheten till löftet att videon aldrig lämnar
 enheten: sidan får bara prata med jsDelivr (MediaPipes WASM) och storage.googleapis.com
-(pose-modellen). Klippet läses som `blob:` och kan inte skickas någonstans. Lägger du till en
-Worker för feedbacktexterna måste dess origin in i `connect-src` – och då är det bara siffror
-som skickas.
+(pose-modellen). Klippet läses som `blob:` och kan inte skickas någonstans. När Workern för
+feedbacktexterna kommer ligger den på samma origin som sidan, så `'self'` täcker den redan –
+CSP:n behöver inte vidgas, och det är fortfarande bara siffror som skickas.
 
 ## Hur prioriteringen fungerar
 Mätvärdena graderas mot ett intervall och en tolerans (`rules.js` → `REF`). Ordningen i `PRIORITY`
@@ -62,6 +66,7 @@ avviker mer än dubbelt så mycket. Under 10 år mäts allt men inget bedöms.
 
 ## Nästa steg
 1. Worker som får siffrorna och formulerar feedback med en LLM (bara ettan i prioriteringen).
+   Lägg `main = "worker.js"` i `wrangler.toml` – samma projekt, samma origin, ingen CORS.
 2. D1: spara analyser per spelare → historik och "timing sitter, nu går vi vidare".
 3. Vinkelkontroll: varna om kameran inte står i sidovy.
 

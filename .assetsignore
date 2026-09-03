@@ -1,0 +1,19 @@
+# Vad som inte ska publiceras.
+#
+# Till skillnad från Pages har Workers static assets ingen inbyggd ignorerlista:
+# wrangler läser katalogen rekursivt och laddar upp allt utom _headers,
+# _redirects och den här filen. Utan raden `.git` nedan hamnar hela
+# repohistoriken publikt läsbar på domänen.
+.git
+.gitignore
+.wrangler
+node_modules
+.DS_Store
+
+# Testklipp. Gitignorade, men ligger kvar lokalt när man deployar från sin maskin.
+samples
+
+# Dokumentation och konfiguration hör inte hemma på domänen.
+CLAUDE.md
+README.md
+wrangler.toml
