@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emitto – skottanalys</title>
+<meta name="theme-color" content="#10262E">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+  @font-face{font-family:"Barlow";src:url(fonts/Barlow-Regular.ttf) format("truetype");font-weight:400;font-display:swap}
+  @font-face{font-family:"Barlow";src:url(fonts/Barlow-SemiBold.ttf) format("truetype");font-weight:600;font-display:swap}
+  @font-face{font-family:"Barlow Condensed";src:url(fonts/BarlowCondensed-SemiBold.ttf) format("truetype");font-weight:600;font-display:swap}
+
+  :root{
+    --ink:#10262E;        /* djup teal-svart: text, fokusrutan, remsans ram */
+    --ink-soft:#4F6169;   /* sekundär text */
+    --line:#D8E0E3;
+    --paper:#FFFFFF;
+    --court:#EAF0F2;      /* ljus yta för sekundära knappar och inmatning */
+    --ball:#FF6A2B;       /* släppet – används bara där något händer */
+    --ok:#1F9D6A; --warn:#E0A800; --bad:#D64545;
+    --r:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink);font-family:Barlow,system-ui,sans-serif;font-size:17px;line-height:1.45}
+  main{max-width:600px;margin:0 auto;padding:16px 18px 64px}
+  header{display:flex;align-items:center;justify-content:space-between;padding:6px 0 22px}
+  header svg{height:36px;width:auto;display:block}
+  header .tag{font-family:"Barlow Condensed";font-weight:600;font-size:18px;color:var(--ink-soft);letter-spacing:.01em}
+  h1{font-family:"Barlow Condensed";font-weight:600;font-size:44px;line-height:1;margin:0 0 10px;letter-spacing:-.005em}
+  h2{font-family:"Barlow Condensed";font-weight:600;font-size:28px;line-height:1.1;margin:30px 0 10px}
+  p{margin:0 0 10px;max-width:58ch}
+  .lead{color:var(--ink-soft);font-size:18px;margin-bottom:18px}
+
+  /* Inspelning – sidans ena tydliga handling */
+  .capture{border:2px solid var(--ink);border-radius:var(--r);padding:18px;display:grid;gap:14px}
+  .capture .cta{display:flex;align-items:center;gap:14px;background:var(--ink);color:#fff;border-radius:9px;padding:16px 18px;cursor:pointer;font-weight:600;font-size:19px}
+  .capture .cta:focus-within{outline:3px solid var(--ball);outline-offset:3px}
+  .capture .cta svg{flex:none}
+  .capture input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
+  .instr{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;color:var(--ink-soft);font-size:16px}
+  .instr li{display:flex;gap:9px;align-items:baseline}
+  .instr li::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--ball);transform:translateY(-2px)}
+
+  .row{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:16px 0 0}
+  .field{display:flex;flex-direction:column;gap:5px;font-size:15px;color:var(--ink-soft)}
+  select,input[type=number]{font:inherit;font-size:17px;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);min-width:110px}
+  button{font:inherit;font-weight:600;font-size:17px;border:0;border-radius:9px;padding:13px 22px;background:var(--ball);color:#fff;cursor:pointer}
+  button[disabled]{background:var(--court);color:var(--ink-soft);cursor:default}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--ball);outline-offset:2px}
+
+  video{width:100%;border-radius:var(--r);background:#000;display:none;margin-top:16px}
+  #progress{height:5px;background:var(--court);border-radius:3px;overflow:hidden;margin:12px 0 6px;display:none}
+  #progress i{display:block;height:100%;width:0;background:var(--ball);transition:width .15s}
+  .status{color:var(--ink-soft);font-size:15px;min-height:1.4em}
+  .error{background:#FBEDED;border-left:4px solid var(--bad);padding:12px 14px;border-radius:6px}
+
+  /* Resultat */
+  #strip{width:100%;border-radius:var(--r);display:none}
+  .focus{background:var(--ink);color:#fff;border-radius:var(--r);padding:22px 22px 20px;margin:20px 0;position:relative;overflow:hidden}
+  .focus::after{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;background:var(--ball);opacity:.9}
+  .focus>*{position:relative}
+  .focus .kicker{font-family:"Barlow Condensed";font-weight:600;font-size:17px;color:#FFB48E;margin-bottom:6px}
+  .focus h3{font-family:"Barlow Condensed";font-weight:600;font-size:34px;line-height:1.05;margin:0 0 12px;max-width:85%}
+  .focus p{color:#DCE5E9;max-width:52ch}
+  .focus .drill{border-top:1px solid rgba(255,255,255,.18);margin-top:14px;padding-top:12px;color:#fff}
+  .metrics{list-style:none;padding:0;margin:0;border-top:1px solid var(--line)}
+  .metrics li{display:grid;grid-template-columns:12px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+  .metrics .dot{width:11px;height:11px;border-radius:50%}
+  .metrics .val{font-family:"Barlow Condensed";font-weight:600;font-size:24px;font-variant-numeric:tabular-nums}
+  .metrics .ref{color:var(--ink-soft);font-size:14px}
+  .good{background:var(--ok)} .meh{background:var(--warn)} .poor{background:var(--bad)}
+  .quiet{color:var(--ink-soft);font-size:15px}
+  details summary{cursor:pointer;font-weight:600;margin:14px 0 6px;list-style:none}
+  details summary::before{content:"+";display:inline-block;width:18px;color:var(--ball)}
+  details[open] summary::before{content:"–"}
+  footer{margin-top:40px;color:var(--ink-soft);font-size:14px}
+  @media (prefers-reduced-motion:reduce){#progress i{transition:none}}
+  @media (max-width:440px){.instr{grid-template-columns:1fr}h1{font-size:38px}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="-12 -87 245 121" height="121" role="img" aria-label="Emitto">
+<g id="mark">
+<path fill="#10262E" d="M38.0 -21.3H15.9Q15.4 -21.3 15.4 -20.8V-16.3Q15.4 -13.200000000000001 17.1 -11.200000000000001Q18.8 -9.200000000000001 21.5 -9.200000000000001Q23.8 -9.200000000000001 25.450000000000003 -10.650000000000002Q27.1 -12.100000000000001 27.6 -14.4Q27.900000000000002 -15.4 28.900000000000002 -15.4L37.800000000000004 -15.0Q38.300000000000004 -15.0 38.650000000000006 -14.65Q39.0 -14.3 38.900000000000006 -13.700000000000001Q38.2 -6.7 33.800000000000004 -2.95Q29.400000000000002 0.8 21.5 0.8Q13.3 0.8 8.55 -3.5500000000000003Q3.8000000000000003 -7.9 3.8000000000000003 -15.4V-35.7Q3.8000000000000003 -43.0 8.55 -47.45Q13.3 -51.900000000000006 21.5 -51.900000000000006Q29.700000000000003 -51.900000000000006 34.45 -47.45Q39.2 -43.0 39.2 -35.7V-22.5Q39.2 -22.0 38.85 -21.65Q38.5 -21.3 38.0 -21.3ZM15.4 -34.800000000000004V-30.3Q15.4 -29.8 15.9 -29.8H27.200000000000003Q27.700000000000003 -29.8 27.700000000000003 -30.3V-34.800000000000004Q27.700000000000003 -38.0 26.0 -39.95Q24.3 -41.900000000000006 21.5 -41.900000000000006Q18.8 -41.900000000000006 17.1 -39.900000000000006Q15.4 -37.9 15.4 -34.800000000000004Z M103.9 -34.7V-1.2000000000000002Q103.9 -0.7000000000000001 103.55000000000001 -0.35000000000000003Q103.2 0.0 102.7 0.0H93.6Q93.1 0.0 92.75 -0.35000000000000003Q92.4 -0.7000000000000001 92.4 -1.2000000000000002V-33.9Q92.4 -37.7 90.9 -39.800000000000004Q89.4 -41.900000000000006 86.80000000000001 -41.900000000000006Q84.0 -41.900000000000006 82.4 -39.800000000000004Q80.80000000000001 -37.7 80.80000000000001 -34.0V-1.2000000000000002Q80.80000000000001 -0.7000000000000001 80.45 -0.35000000000000003Q80.1 0.0 79.6 0.0H70.5Q70.0 0.0 69.65 -0.35000000000000003Q69.30000000000001 -0.7000000000000001 69.30000000000001 -1.2000000000000002V-33.9Q69.30000000000001 -37.7 67.75 -39.800000000000004Q66.2 -41.900000000000006 63.7 -41.900000000000006Q60.900000000000006 -41.900000000000006 59.300000000000004 -39.800000000000004Q57.7 -37.7 57.7 -34.0V-1.2000000000000002Q57.7 -0.7000000000000001 57.35 -0.35000000000000003Q57.0 0.0 56.5 0.0H47.400000000000006Q46.900000000000006 0.0 46.550000000000004 -0.35000000000000003Q46.2 -0.7000000000000001 46.2 -1.2000000000000002V-49.900000000000006Q46.2 -50.400000000000006 46.550000000000004 -50.75Q46.900000000000006 -51.1 47.400000000000006 -51.1H56.5Q57.0 -51.1 57.35 -50.75Q57.7 -50.400000000000006 57.7 -49.900000000000006V-48.300000000000004Q57.7 -48.0 57.900000000000006 -47.900000000000006Q58.1 -47.800000000000004 58.3 -48.1Q60.3 -50.1 62.800000000000004 -51.0Q65.30000000000001 -51.900000000000006 67.7 -51.900000000000006Q75.1 -51.900000000000006 78.6 -45.6Q78.9 -45.2 79.5 -45.900000000000006Q81.5 -49.1 84.55 -50.5Q87.6 -51.900000000000006 90.7 -51.900000000000006Q97.2 -51.900000000000006 100.55000000000001 -47.35000000000001Q103.9 -42.800000000000004 103.9 -34.7Z M110.39999999999999 -1.2000000000000002V-49.900000000000006Q110.39999999999999 -50.400000000000006 110.75 -50.75Q111.1 -51.1 111.6 -51.1H120.8Q121.3 -51.1 121.65 -50.75Q122.0 -50.400000000000006 122.0 -49.900000000000006V-1.2000000000000002Q122.0 -0.7000000000000001 121.65 -0.35000000000000003Q121.3 0.0 120.8 0.0H111.6Q111.1 0.0 110.75 -0.35000000000000003Q110.39999999999999 -0.7000000000000001 110.39999999999999 -1.2000000000000002Z M149.1 -42.900000000000006H142.9Q142.4 -42.900000000000006 142.4 -42.400000000000006V-16.2Q142.4 -12.700000000000001 143.7 -11.350000000000001Q145.0 -10.0 147.6 -10.100000000000001H148.3Q148.8 -10.100000000000001 149.15 -9.75Q149.5 -9.4 149.5 -8.9V-1.2000000000000002Q149.5 -0.7000000000000001 149.15 -0.35000000000000003Q148.8 0.0 148.3 0.0H144.9Q138.1 0.0 134.64999999999998 -2.5Q131.2 -5.0 131.2 -11.9V-42.400000000000006Q131.2 -42.900000000000006 130.7 -42.900000000000006H127.2Q126.7 -42.900000000000006 126.35 -43.25Q126.0 -43.6 126.0 -44.1V-49.900000000000006Q126.0 -50.400000000000006 126.35 -50.75Q126.7 -51.1 127.2 -51.1H130.7Q131.2 -51.1 131.2 -51.6V-62.6Q131.2 -63.1 131.55 -63.45Q131.9 -63.800000000000004 132.4 -63.800000000000004H141.2Q141.7 -63.800000000000004 142.05 -63.45Q142.4 -63.1 142.4 -62.6V-51.6Q142.4 -51.1 142.9 -51.1H149.1Q149.6 -51.1 149.95 -50.75Q150.3 -50.400000000000006 150.3 -49.900000000000006V-44.1Q150.3 -43.6 149.95 -43.25Q149.6 -42.900000000000006 149.1 -42.900000000000006Z M176.3 -42.900000000000006H170.1Q169.6 -42.900000000000006 169.6 -42.400000000000006V-16.2Q169.6 -12.700000000000001 170.89999999999998 -11.350000000000001Q172.2 -10.0 174.8 -10.100000000000001H175.5Q176.0 -10.100000000000001 176.35 -9.75Q176.7 -9.4 176.7 -8.9V-1.2000000000000002Q176.7 -0.7000000000000001 176.35 -0.35000000000000003Q176.0 0.0 175.5 0.0H172.1Q165.3 0.0 161.85000000000002 -2.5Q158.4 -5.0 158.4 -11.9V-42.400000000000006Q158.4 -42.900000000000006 157.9 -42.900000000000006H154.4Q153.9 -42.900000000000006 153.55 -43.25Q153.2 -43.6 153.2 -44.1V-49.900000000000006Q153.2 -50.400000000000006 153.55 -50.75Q153.9 -51.1 154.4 -51.1H157.9Q158.4 -51.1 158.4 -51.6V-62.6Q158.4 -63.1 158.75 -63.45Q159.1 -63.800000000000004 159.6 -63.800000000000004H168.4Q168.9 -63.800000000000004 169.25 -63.45Q169.6 -63.1 169.6 -62.6V-51.6Q169.6 -51.1 170.1 -51.1H176.3Q176.8 -51.1 177.15 -50.75Q177.5 -50.400000000000006 177.5 -49.900000000000006V-44.1Q177.5 -43.6 177.15 -43.25Q176.8 -42.900000000000006 176.3 -42.900000000000006Z M182.5 -15.5V-35.6Q182.5 -43.0 187.3 -47.45Q192.1 -51.900000000000006 200.29999999999998 -51.900000000000006Q208.6 -51.900000000000006 213.39999999999998 -47.45Q218.2 -43.0 218.2 -35.6V-15.5Q218.2 -8.0 213.45 -3.6Q208.7 0.8 200.29999999999998 0.8Q192.0 0.8 187.25 -3.6Q182.5 -8.0 182.5 -15.5ZM206.6 -16.400000000000002V-34.800000000000004Q206.6 -37.9 204.85 -39.900000000000006Q203.1 -41.900000000000006 200.29999999999998 -41.900000000000006Q197.5 -41.900000000000006 195.8 -39.95Q194.1 -38.0 194.1 -34.800000000000004V-16.400000000000002Q194.1 -13.200000000000001 195.8 -11.25Q197.5 -9.3 200.29999999999998 -9.3Q203.1 -9.3 204.85 -11.25Q206.6 -13.200000000000001 206.6 -16.400000000000002Z"/>
+<path d="M114.7 -56.1 Q115.2 -75.1 114.5 -74.7" fill="none" stroke="#FF6A2B" stroke-width="4.5" stroke-linecap="round"/>
+<circle cx="127.2" cy="-81.1" r="8.5" fill="#FF6A2B"/>
+</g>
+</svg>
+    <span class="tag">Skottanalys</span>
+  </header>
+
+  <h1>Ett skott. En sak att fixa.</h1>
+  <p class="lead">Filma från sidan. Du får fyra faser med vinklar, tempot jämfört med hur bra skyttar gör – och ett tips, inte tio.</p>
+
+  <div class="capture">
+    <label class="cta" for="file">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l4.5-2.5v9L15 14"/><rect x="3" y="6" width="12" height="12" rx="2"/></svg>
+      Filma eller välj ett klipp
+      <input id="file" type="file" accept="video/*" capture="environment">
+    </label>
+    <ul class="instr">
+      <li>Från sidan, i höfthöjd</li>
+      <li>Hela kroppen i bild, även fötterna</li>
+      <li>3–5 sekunder, ett skott</li>
+      <li>Håll kameran stilla</li>
+    </ul>
+  </div>
+
+  <div class="row">
+    <div class="field">Ålder
+      <input id="age" type="number" min="6" max="60" value="14" inputmode="numeric">
+    </div>
+    <div class="field">Skjuthand
+      <select id="hand"><option value="auto">Gissa</option><option value="right">Höger</option><option value="left">Vänster</option></select>
+    </div>
+    <button id="run" disabled>Analysera</button>
+  </div>
+
+  <video id="video" playsinline muted></video>
+  <div id="progress"><i></i></div>
+  <div class="status" id="status"></div>
+
+  <div id="result" hidden>
+    <h2>Fyra faser</h2>
+    <canvas id="strip"></canvas>
+    <section id="focus"></section>
+    <h2>Mätvärden</h2>
+    <ul class="metrics" id="metrics"></ul>
+    <details><summary>Fler tips och detaljer</summary><div id="more"></div></details>
+    <p class="quiet" id="caveat"></p>
+  </div>
+
+  <footer>Analysen körs i din webbläsare. Klippet laddas aldrig upp någonstans.</footer>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
