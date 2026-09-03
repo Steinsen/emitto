@@ -1,5 +1,6 @@
 // analysis.js – hittar skottets faser och räknar ut mätvärden från ledpunkter.
 // Indata: frames = [{t, lm}] där lm är MediaPipe-landmarks (normaliserade 0–1, y nedåt).
+// Fel kastas som koder (E_*), aldrig som färdig text – översättningen görs i app.js.
 // Allt är 2D från sidovy. Räkna med ±5° i vinklarna.
 
 export const L = { nose:0, lSho:11, rSho:12, lElb:13, rElb:14, lWri:15, rWri:16,
@@ -64,7 +65,7 @@ export function signals(frames, side, aspect) {
 
 export function findPhases(sig) {
   const n = sig.length;
-  if (n < 10) throw new Error('För få bildrutor – filma minst 2 sekunder.');
+  if (n < 10) throw new Error('E_FEW_FRAMES');
   const fps = n / (sig[n - 1].t - sig[0].t || 1);
 
   // Stående utgångsläge = medianvärden i första 0,3 s
@@ -81,7 +82,7 @@ export function findPhases(sig) {
     const rise = sig[i + win].ext - sig[i].ext;
     if (rise > bestRise) { bestRise = rise; burst = i; }
   }
-  if (bestRise < 0.15) throw new Error('Hittade ingen skottrörelse. Klippet ska innehålla ett helt skott sett från sidan.');
+  if (bestRise < 0.15) throw new Error('E_NO_SHOT');
 
   // 2. Set point: armen som mest vikt under 1,5 s före sträckningen
   let set = burst;

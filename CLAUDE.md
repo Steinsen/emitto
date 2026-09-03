@@ -1,8 +1,9 @@
 # Emitto
 
 Webbapp för basketspelare och tränare: filma ett skott från sidan, få fyra faser med skelett,
-mätvärden mot forskningens riktvärden och **en** prioriterad sak att jobba på. Målgrupp är
-ungdomsspelare (ca 10–18) med tränare i loopen.
+mätvärden mot forskningens riktvärden och en kort prioriterad lista (max 5) över vad som är
+värt att jobba på, i den ordning rörelsekedjan går. Målgrupp är ungdomsspelare (ca 10–18) med
+tränare i loopen. Gränssnittet finns på svenska och engelska.
 
 ## Arkitektur
 
@@ -16,15 +17,20 @@ ungdomsspelare (ca 10–18) med tränare i loopen.
 
 | Fil | Roll | Rör den när… |
 |---|---|---|
-| `index.html` | UI, stil, designtokens | utseende, texter |
-| `app.js` | laddar klipp, kör MediaPipe ruta för ruta, ritar resultat | prestanda, rendering |
+| `index.html` | UI, stil, designtokens, de tre vyerna | utseende, struktur |
+| `app.js` | laddar klipp, kör MediaPipe ruta för ruta, ritar faser och listor | prestanda, rendering |
 | `analysis.js` | hittar faser och räknar mätvärden ur ledpunkter | fasdetektering är fel |
-| `rules.js` | referensvärden per åldersband, prioritering, feedbacktexter | gränser, texter, ordning |
+| `rules.js` | riktvärden, prioritering, feedbacktexter på båda språken | gränser, texter, ordning |
+| `i18n.js` | gränssnittets strängar, språkval och språkdetektering | UI-texter, nytt språk |
 | `logo.svg`, `icon.svg`, `fonts/` | varumärke | aldrig utan anledning |
 | `wrangler.toml`, `_headers`, `.assetsignore` | deploy: projekt, headers/CSP, vad som inte publiceras | deployen ändras |
 
-Håll isär de tre lagren: `analysis.js` vet inget om ålder eller texter, `rules.js` vet inget om
-landmarks, `app.js` vet inget om riktvärden.
+Håll isär lagren: `analysis.js` vet inget om texter eller riktvärden och kastar fel som koder
+(`E_NO_SHOT`), aldrig som färdig mening. `rules.js` vet inget om landmarks. `i18n.js` vet inget
+om basket. `app.js` vet inget om riktvärden – det frågar `rules.js`.
+
+Feedbacktexterna ligger i `rules.js`, inte i `i18n.js`, eftersom de hör ihop med gränsen de
+beskriver: ändrar du ett riktvärde ska texten bredvid ändras i samma fil.
 
 ## Kommandon
 
@@ -64,18 +70,36 @@ Bollen detekteras inte. Allt utgår från `ext` = avstånd axel→handled delat 
 Skjutarm = den handled som når högst. Vinklar räknas med bildens aspect ratio, annars blir de fel
 i stående video.
 
+## Flödet (app.js)
+
+Tre vyer i samma sida, ingen router: `#view-start` → `#view-loading` → `#view-result`. Analysen
+startar av sig själv när en fil valts – ingen knapp. Under laddningen studsar en boll och
+progressbaren fylls av seek-loopen.
+
+Resultatvyn har faserna som en svepbar rad. Tryck på ett kort ritar ut vinklarna i leden med
+färg efter status och listar fasens mätvärden mot riktvärdet. Bara de fyra bildrutor som visas
+sparas – att spara alla kostade över 100 MB på en telefon.
+
+Resultatet ligger kvar i `last`, så språkbyte ritar om utan att analysera igen.
+
 ## Prioritering (rules.js)
 
 `PRIORITY` är rörelsekedjan nedifrån och upp: knädjup → tid → knä vid släpp → bållutning →
 armbåge → släpphöjd. Första avvikelsen vinner, om inte en senare avviker mer än dubbelt så
-mycket. Under 10 år: mät, bedöm inte. Prioriteringen är deterministisk och ska förbli det – en
-LLM får formulera, aldrig välja.
+mycket – då lyfts den först. `issueList` ger max 5 och fyller aldrig ut listan med påhittade
+fel: finns två avvikelser blir listan två lång. Prioriteringen är deterministisk och ska förbli
+det – en LLM får formulera, aldrig välja.
+
+Åldersband och val av skjuthand är borttagna ur gränssnittet. Skjutarmen gissas av `pickSide`
+(handleden som når högst). Riktvärdena är de tidigare vuxenvärdena, eftersom 14 år var förvalt
+och landade där – bedömningen av ett givet klipp är alltså oförändrad.
 
 ## Kända svagheter
 
 - Armbågsvinkeln är brusig när bollen skymmer armen. Om den ger orimliga tips: ta bort
   `elbowSet` ur `PRIORITY` hellre än att vidga gränserna.
-- Ungdomsreferenserna är vidgade vuxenvärden, inte forskning. Ska kalibreras mot egna klipp.
+- Riktvärdena gäller nu alla åldrar. För en tioåring är de för hårda. Kalibrera mot egna klipp
+  innan du delar upp dem i band igen.
 - Fotställning i bredd syns inte från sidan. Säg inget om den.
 - Seek-loopen i `app.js` kan vara långsam på telefon. Sänk `SAMPLE_FPS` (15 → 10) före andra
   optimeringar. `delegate: 'GPU'` kan behöva bli `'CPU'` på vissa Android-enheter.
@@ -83,10 +107,10 @@ LLM får formulera, aldrig välja.
 ## Design
 
 Bläck `#10262E`, boll `#FF6A2B`, yta `#EAF0F2`. Orange används bara där något händer
-(primärknapp, logotypens spår, fokusrutan) – inte som dekoration. Barlow Condensed för rubriker
+(primärknapp, logotypens spår, etta i listan, plustecknen) – inte som dekoration. Barlow Condensed för rubriker
 och siffror, Barlow för brödtext, båda självhostade i `fonts/`. Inga externa anrop utöver
-MediaPipe. Svenska i UI, lågmäld ton, en sak i taget – aldrig en lista med fel utan att först
-säga vad som är bra.
+MediaPipe. Lågmäld ton på båda språken. Listan inleds alltid med vad som ligger inom
+riktvärdena – aldrig en rad fel utan att först säga vad som är bra.
 
 ## Att inte göra
 

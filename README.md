@@ -1,14 +1,22 @@
 # Emitto – MVP
 
-Statisk webbapp: filma ett skott från sidan, få fyra faser med skelett, mätvärden mot
-forskningens riktvärden och **en** prioriterad sak att jobba på. All analys körs i webbläsaren
-(MediaPipe Pose via WASM) – videon lämnar aldrig telefonen.
+Statisk webbapp: välj ett klipp filmat från sidan, få fyra faser med skelett, mätvärden mot
+forskningens riktvärden och en kort prioriterad lista över vad som är värt att jobba på. All
+analys körs i webbläsaren (MediaPipe Pose via WASM) – videon lämnar aldrig telefonen.
+Gränssnittet finns på svenska och engelska och väljer språk efter webbläsaren.
+
+## Så används den
+Välj ett klipp. Analysen startar direkt. När den är klar visas faserna som en svepbar rad –
+tryck på en bild för att se vinklarna i leden och vilka som ligger utanför riktvärdet. Under
+faserna ligger listan med det som är värt att jobba på, i prioriterad ordning. Varje punkt
+fälls ut med ett plus: varför det inte är optimalt, en övning, och en rad pepp.
 
 ## Filer
-- `index.html` – gränssnitt och stil
-- `app.js` – laddar klipp, kör MediaPipe ruta för ruta, ritar resultat
+- `index.html` – gränssnitt och stil, de tre vyerna
+- `app.js` – laddar klipp, kör MediaPipe ruta för ruta, ritar faser och listor
 - `analysis.js` – hittar faserna (lägsta läge, set point, släpp, frånskjut, följning) och räknar mätvärden
-- `rules.js` – referensvärden per åldersband, prioriteringslogik, feedbacktexter. **Det är här du justerar.**
+- `rules.js` – riktvärden, prioriteringslogik, feedbacktexter på båda språken. **Det är här du justerar.**
+- `i18n.js` – gränssnittets strängar och språkval
 
 ## Köra lokalt
 ES-moduler kräver en webbserver (inte `file://`):
@@ -55,14 +63,16 @@ CSP:n behöver inte vidgas, och det är fortfarande bara siffror som skickas.
 
 ## Hur prioriteringen fungerar
 Mätvärdena graderas mot ett intervall och en tolerans (`rules.js` → `REF`). Ordningen i `PRIORITY`
-är rörelsekedjan nedifrån och upp. Första avvikelsen i kedjan blir fokus, om inte något längre ner
-avviker mer än dubbelt så mycket. Under 10 år mäts allt men inget bedöms.
+är rörelsekedjan nedifrån och upp. Första avvikelsen i kedjan hamnar överst, om inte något längre
+ner avviker mer än dubbelt så mycket. Listan blir aldrig längre än fem och fylls aldrig ut med
+påhittade fel.
 
 ## Kända begränsningar
 - Sidovy krävs. Fotställning i bredd syns inte.
 - Bollen detekteras inte; släppet uppskattas från armsträckningen (ca 0,1 s senare än verkligt släpp).
 - Armbågsvinkeln är brusig när bollen skymmer armen. Lita mer på knä, tid och släpphöjd.
-- Ungdomsreferenserna är gissningar utifrån vuxenstudier. Kalibrera mot egna klipp.
+- Riktvärdena är vuxenvärden och gäller alla åldrar. För de yngsta är de för hårda. Kalibrera mot egna klipp.
+- Skjutarmen gissas från vilken handled som når högst. Ingen manuell inställning finns.
 
 ## Nästa steg
 1. Worker som får siffrorna och formulerar feedback med en LLM (bara ettan i prioriteringen).

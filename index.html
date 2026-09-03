@@ -43,15 +43,12 @@
   .instr li{display:flex;gap:9px;align-items:baseline}
   .instr li::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--ball);transform:translateY(-2px)}
 
-  .row{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:16px 0 0}
-  .field{display:flex;flex-direction:column;gap:5px;font-size:15px;color:var(--ink-soft)}
-  select,input[type=number]{font:inherit;font-size:17px;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);min-width:110px}
   button{font:inherit;font-weight:600;font-size:17px;border:0;border-radius:9px;padding:13px 22px;background:var(--ball);color:#fff;cursor:pointer}
-  button[disabled]{background:var(--court);color:var(--ink-soft);cursor:default}
-  button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--ball);outline-offset:2px}
+  button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--ball);outline-offset:2px}
+  .ghost{background:var(--court);color:var(--ink)}
 
-  video{width:100%;border-radius:var(--r);background:#000;display:none;margin-top:16px}
-  #progress{height:5px;background:var(--court);border-radius:3px;overflow:hidden;margin:12px 0 6px;display:none}
+  video{display:none}
+  #progress{height:5px;background:var(--court);border-radius:3px;overflow:hidden;margin:12px auto 6px;max-width:240px}
   #progress i{display:block;height:100%;width:0;background:var(--ball);transition:width .15s}
   .status{color:var(--ink-soft);font-size:15px;min-height:1.4em}
   .error{background:#FBEDED;border-left:4px solid var(--bad);padding:12px 14px;border-radius:6px}
@@ -77,6 +74,56 @@
   details[open] summary::before{content:"–"}
   footer{margin-top:40px;color:var(--ink-soft);font-size:14px}
   @media (prefers-reduced-motion:reduce){#progress i{transition:none}}
+
+  /* Språkväljare – två lägen, aldrig orange (inget "händer" här) */
+  .lang{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .lang button{background:var(--paper);color:var(--ink-soft);font-size:14px;font-weight:600;padding:7px 11px;border-radius:0;letter-spacing:.03em}
+  .lang button[aria-pressed=true]{background:var(--ink);color:#fff}
+
+  /* Laddning – bollen studsar medan analysen går */
+  #view-loading{padding:44px 0 8px;text-align:center}
+  .ball{width:58px;height:58px;margin:0 auto 22px;animation:bounce 1s cubic-bezier(.5,0,.5,1) infinite}
+  @keyframes bounce{0%,100%{transform:translateY(-16px)}50%{transform:translateY(10px) scaleY(.93) scaleX(1.05)}}
+  .loadmsg{color:var(--ink-soft);font-size:17px;min-height:1.4em}
+
+  /* Faserna – en svepbar rad, en bild i taget */
+  .phases{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -18px;padding:4px 18px 10px;scrollbar-width:none}
+  .phases::-webkit-scrollbar{display:none}
+  .phase{flex:0 0 88%;max-width:430px;scroll-snap-align:center;margin:0;background:var(--ink);border-radius:var(--r);overflow:hidden;cursor:pointer}
+  .phase canvas{display:block;width:100%;height:auto}
+  .phase figcaption{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:11px 14px 0;color:#fff}
+  .phase .name{font-family:"Barlow Condensed";font-weight:600;font-size:22px}
+  .phase .time{color:#FFB48E;font-size:14px;font-variant-numeric:tabular-nums}
+  .phase .toggle{display:block;width:100%;text-align:left;background:none;color:#FFB48E;font-size:15px;padding:8px 14px 13px}
+  .phase .toggle::before{content:"+";display:inline-block;width:17px;font-weight:600}
+  .phase[data-open=true] .toggle::before{content:"–"}
+  .angles{list-style:none;margin:0;padding:0 14px 14px;color:#DCE5E9;font-size:15px}
+  .angles li{display:flex;gap:9px;align-items:baseline;padding:4px 0}
+  .angles .dot{flex:none;width:9px;height:9px;border-radius:50%;transform:translateY(-1px)}
+  .angles .v{margin-left:auto;font-family:"Barlow Condensed";font-weight:600;font-size:19px;color:#fff;font-variant-numeric:tabular-nums}
+  .dots{display:flex;gap:7px;justify-content:center;margin:2px 0 26px}
+  .dots button{width:8px;height:8px;padding:0;border-radius:50%;background:var(--line)}
+  .dots button[aria-current=true]{background:var(--ink)}
+
+  /* Att jobba på – prioriterad ordning, en rad per sak */
+  .work{list-style:none;padding:0;margin:14px 0 0;border-top:1px solid var(--line)}
+  .work li{border-bottom:1px solid var(--line)}
+  .work .head{display:flex;width:100%;gap:12px;align-items:center;text-align:left;background:none;color:var(--ink);padding:15px 0;font-size:17px;border-radius:0}
+  .work .rank{flex:none;width:26px;height:26px;border-radius:50%;background:var(--court);color:var(--ink-soft);font-family:"Barlow Condensed";font-size:17px;display:grid;place-items:center}
+  .work li:first-child .rank{background:var(--ball);color:#fff}
+  .work .label{flex:1}
+  .work .plus{flex:none;color:var(--ball);font-size:22px;line-height:1;width:18px;text-align:center}
+  .work .head[aria-expanded=true] .plus::before{content:"–"}
+  .work .head[aria-expanded=false] .plus::before{content:"+"}
+  .work .body{padding:0 0 18px 38px;max-width:56ch}
+  .work .body p{margin:0 0 10px}
+  .work .drill{background:var(--court);border-radius:8px;padding:11px 13px}
+  .work .pep{color:var(--ink-soft);border-left:3px solid var(--ball);padding-left:11px;margin-bottom:0}
+  .allclear{background:var(--ink);color:#fff;border-radius:var(--r);padding:20px 22px;margin:14px 0 0}
+  .allclear h3{font-family:"Barlow Condensed";font-weight:600;font-size:30px;margin:0 0 10px}
+  .allclear p{color:#DCE5E9}
+  #again{margin-top:26px}
+  @media (prefers-reduced-motion:reduce){.ball{animation:none}.phases{scroll-behavior:auto}}
   @media (max-width:440px){.instr{grid-template-columns:1fr}h1{font-size:38px}}
 </style>
 </head>
@@ -90,51 +137,62 @@
 <circle cx="127.2" cy="-81.1" r="8.5" fill="#FF6A2B"/>
 </g>
 </svg>
-    <span class="tag">Skottanalys</span>
+    <span class="tag" data-i18n="tag">Skottanalys</span>
+    <div class="lang" id="lang"></div>
   </header>
 
-  <h1>Ett skott. En sak att fixa.</h1>
-  <p class="lead">Filma från sidan. Du får fyra faser med vinklar, tempot jämfört med hur bra skyttar gör – och ett tips, inte tio.</p>
+  <section id="view-start">
+    <h1 data-i18n="h1">Ett skott. Det viktigaste först.</h1>
+    <p class="lead" data-i18n="lead"></p>
 
-  <div class="capture">
-    <label class="cta" for="file">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l4.5-2.5v9L15 14"/><rect x="3" y="6" width="12" height="12" rx="2"/></svg>
-      Välj ett klipp
-      <input id="file" type="file" accept="video/*">
-    </label>
-    <ul class="instr">
-      <li>Från sidan, i höfthöjd</li>
-      <li>Hela kroppen i bild, även fötterna</li>
-      <li>3–5 sekunder, ett skott</li>
-      <li>Håll kameran stilla</li>
-    </ul>
-  </div>
+    <div class="capture">
+      <label class="cta" for="file">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l4.5-2.5v9L15 14"/><rect x="3" y="6" width="12" height="12" rx="2"/></svg>
+        <span data-i18n="cta">Välj ett klipp</span>
+        <input id="file" type="file" accept="video/*">
+      </label>
+      <ul class="instr">
+        <li data-i18n="instr1"></li>
+        <li data-i18n="instr2"></li>
+        <li data-i18n="instr3"></li>
+        <li data-i18n="instr4"></li>
+      </ul>
+    </div>
+    <div class="status" id="error"></div>
+  </section>
 
-  <div class="row">
-    <div class="field">Ålder
-      <input id="age" type="number" min="6" max="60" value="14" inputmode="numeric">
-    </div>
-    <div class="field">Skjuthand
-      <select id="hand"><option value="auto">Gissa</option><option value="right">Höger</option><option value="left">Vänster</option></select>
-    </div>
-    <button id="run" disabled>Analysera</button>
-  </div>
+  <section id="view-loading" hidden>
+    <svg class="ball" viewBox="0 0 48 48" role="img" aria-hidden="true">
+      <circle cx="24" cy="24" r="21" fill="#FF6A2B"/>
+      <g fill="none" stroke="#10262E" stroke-width="2">
+        <circle cx="24" cy="24" r="21"/>
+        <path d="M3 24h42M24 3v42M9 9c8 6 8 24 0 30M39 9c-8 6-8 24 0 30"/>
+      </g>
+    </svg>
+    <p class="loadmsg" id="loadmsg"></p>
+    <div id="progress"><i></i></div>
+  </section>
+
+  <section id="view-result" hidden>
+    <h2 data-i18n="phasesTitle"></h2>
+    <p class="quiet" data-i18n="phaseHint"></p>
+    <div class="phases" id="phases"></div>
+    <div class="dots" id="dots"></div>
+
+    <h2 data-i18n="workTitle"></h2>
+    <p class="quiet" id="goodnote"></p>
+    <ol class="work" id="work"></ol>
+
+    <details>
+      <summary data-i18n="detailsTitle"></summary>
+      <ul class="metrics" id="metrics"></ul>
+    </details>
+    <p class="quiet" id="caveat"></p>
+    <button id="again" class="ghost" data-i18n="newClip"></button>
+  </section>
 
   <video id="video" playsinline muted></video>
-  <div id="progress"><i></i></div>
-  <div class="status" id="status"></div>
-
-  <div id="result" hidden>
-    <h2>Fyra faser</h2>
-    <canvas id="strip"></canvas>
-    <section id="focus"></section>
-    <h2>Mätvärden</h2>
-    <ul class="metrics" id="metrics"></ul>
-    <details><summary>Fler tips och detaljer</summary><div id="more"></div></details>
-    <p class="quiet" id="caveat"></p>
-  </div>
-
-  <footer>Analysen körs i din webbläsare. Klippet laddas aldrig upp någonstans.</footer>
+  <footer data-i18n="footer"></footer>
 </main>
 <script type="module" src="app.js"></script>
 </body>
