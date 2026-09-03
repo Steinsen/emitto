@@ -1,0 +1,6 @@
+# Testklipp och landmarks – aldrig i repot, aldrig i deployen
+samples/
+
+node_modules/
+.wrangler/
+.DS_Store

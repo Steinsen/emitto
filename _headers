@@ -1,0 +1,27 @@
+# Cloudflare Pages headers. Filen laddas inte upp som asset, den läses som konfiguration.
+# https://developers.cloudflare.com/pages/configuration/headers/
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  # capture="environment" på filväljaren behöver camera=(self). Inget annat behövs.
+  Permissions-Policy: camera=(self), microphone=(), geolocation=(), usb=(), payment=()
+  # CSP:n är den tekniska motsvarigheten till löftet "videon lämnar aldrig enheten":
+  # connect-src listar de enda ställen sidan får prata med, och klippet (blob:) kan
+  # inte skickas någonstans. Vidga inte den raden utan att tänka efter.
+  #   script-src   app.js (self) + MediaPipe från jsDelivr, 'wasm-unsafe-eval' för WASM
+  #   connect-src  jsDelivr (wasm-binären) + storage.googleapis.com (pose-modellen)
+  #   media-src    blob: – klippet läses som object-URL
+  #   style-src    'unsafe-inline' – all CSS ligger i <style> i index.html
+  Content-Security-Policy: default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'
+
+# Typsnitten byter aldrig namn när de ändras – men de ändras i praktiken aldrig.
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Koden har inga hashade filnamn. Måste revalideras, annars kör folk gammal analys.
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/*.js
+  Cache-Control: public, max-age=0, must-revalidate
