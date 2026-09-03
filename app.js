@@ -21,6 +21,17 @@ const PHASES = [
   { key: 'follow',  label: 'phaseFollow' },
 ];
 
+// Färdiga exempel som kan analyseras utan att man har ett eget klipp. Filerna ligger i
+// examples/ och publiceras med sajten. Lägg till Jalen genom att lägga filen där och
+// skriva en rad här – ingen annan kod behöver ändras.
+//
+// Klippen måste vara H.264. iPhone spelar in i HEVC, som Safari klarar men Chrome och
+// Firefox ofta inte – ett HEVC-exempel fungerar alltså inte för alla besökare.
+const EXAMPLES = [
+  { file: 'examples/LeoNormal.mp4', who: 'Leo',
+    what: { sv: 'Enstegsskott, normal fart', en: 'One-motion shot, normal speed' } },
+];
+
 // Uppspelningshastighet. 'auto' gissar ur hoppet; en siffra betyder att användaren vet.
 const SPEEDS = ['auto', 1, 2, 4, 8];
 let speedChoice = 'auto';
@@ -70,17 +81,27 @@ function refresh() {
   applyStatic();
   buildLangPicker();
   buildSpeedPicker($('speed-start'), v => { speedChoice = v; refresh(); });
+  buildExamples();
   document.title = `Emitto – ${t('tag')}`;
   if (last) renderResult(last);
 }
 
 // ---------------------------------------------------------------- analys
 
-file.addEventListener('change', async () => {
-  const f = file.files[0];
-  if (!f) return;
+const ERRORS = {
+  E_FEW_FRAMES: 'errTooFewFrames', E_NO_SHOT: 'errNoShot',
+  E_NO_PERSON: 'errNoPerson', E_VIDEO: 'errVideo', E_EXAMPLE: 'errExample',
+};
+
+function showError(e) {
+  $('error').innerHTML = `<div class="error">${t(ERRORS[e.message] || 'errNoShot')}</div>`;
+  show('start');
+}
+
+// Gemensam väg in, oavsett om klippet kommer från filväljaren eller ett exempel.
+async function startFrom(blob) {
   if (fileUrl) URL.revokeObjectURL(fileUrl);
-  fileUrl = URL.createObjectURL(f);
+  fileUrl = URL.createObjectURL(blob);
   video.src = fileUrl;
   last = null;
   $('error').textContent = '';
@@ -89,13 +110,40 @@ file.addEventListener('change', async () => {
   try {
     await analyze();
   } catch (e) {
-    const codes = { E_FEW_FRAMES: 'errTooFewFrames', E_NO_SHOT: 'errNoShot', E_NO_PERSON: 'errNoPerson' };
-    $('error').innerHTML = `<div class="error">${t(codes[e.message] || 'errNoShot')}</div>`;
-    show('start');
-  } finally {
-    file.value = '';   // så att samma fil kan väljas igen
+    showError(e);
   }
+}
+
+file.addEventListener('change', async () => {
+  const f = file.files[0];
+  if (!f) return;
+  file.value = '';   // så att samma fil kan väljas igen
+  await startFrom(f);
 });
+
+function buildExamples() {
+  const box = $('examples');
+  box.innerHTML = '';
+  for (const ex of EXAMPLES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = `<span class="who">${ex.who}</span><span class="what">${ex.what[getLang()]}</span><span class="go">→</span>`;
+    b.addEventListener('click', async () => {
+      $('error').textContent = '';
+      $('loadmsg').textContent = t('loadingExample');
+      bar.style.width = '0%';
+      show('loading');
+      try {
+        const res = await fetch(ex.file);
+        if (!res.ok) throw new Error('E_EXAMPLE');
+        await startFrom(await res.blob());
+      } catch (e) {
+        showError(e.message in ERRORS ? e : new Error('E_EXAMPLE'));
+      }
+    });
+    box.appendChild(b);
+  }
+}
 
 $('again').addEventListener('click', () => { last = null; $('error').textContent = ''; show('start'); });
 
@@ -116,9 +164,22 @@ async function loadModel() {
 
 const seek = time => new Promise(res => { video.onseeked = () => res(); video.currentTime = time; });
 
+// Väntar på klippets metadata. Kan webbläsaren inte avkoda formatet kommer aldrig
+// loadedmetadata – då kastar vi i stället för att låta laddningen snurra i evighet.
+// iPhone spelar in i HEVC, som Chrome och Firefox ofta saknar stöd för.
+function videoReady() {
+  if (video.readyState >= 1) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const done = () => { clearTimeout(timer); video.onloadedmetadata = null; video.onerror = null; };
+    const timer = setTimeout(() => { done(); rej(new Error('E_VIDEO')); }, 30000);
+    video.onloadedmetadata = () => { done(); res(); };
+    video.onerror = () => { done(); rej(new Error('E_VIDEO')); };
+  });
+}
+
 async function analyze() {
+  await videoReady();
   await loadModel();
-  await new Promise(res => (video.readyState >= 1 ? res() : (video.onloadedmetadata = res)));
   $('loadmsg').textContent = t('loadingAnalyze');
 
   const aspect = video.videoWidth / video.videoHeight;
@@ -187,10 +248,8 @@ async function recalculate(choice) {
   try {
     await compute(frames, side, aspect);
   } catch (e) {
-    const codes = { E_FEW_FRAMES: 'errTooFewFrames', E_NO_SHOT: 'errNoShot', E_NO_PERSON: 'errNoPerson' };
-    $('error').innerHTML = `<div class="error">${t(codes[e.message] || 'errNoShot')}</div>`;
     last = null;
-    show('start');
+    showError(e);
   }
 }
 

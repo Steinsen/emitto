@@ -23,6 +23,7 @@ tränare i loopen. Gränssnittet finns på svenska och engelska.
 | `rules.js` | riktvärden, prioritering, feedbacktexter på båda språken | gränser, texter, ordning |
 | `i18n.js` | gränssnittets strängar, språkval och språkdetektering | UI-texter, nytt språk |
 | `test-units.mjs` | kontroller som inte behöver klipp | hastighet, prioritering, språk |
+| `examples/` | färdiga klipp som kan analyseras utan eget klipp | nytt exempel läggs till i `EXAMPLES` i `app.js` |
 | `logo.svg`, `icon.svg`, `fonts/` | varumärke | aldrig utan anledning |
 | `wrangler.toml`, `_headers`, `.assetsignore` | deploy: projekt, headers/CSP, vad som inte publiceras | deployen ändras |
 
@@ -127,6 +128,10 @@ och landade där – bedömningen av ett givet klipp är alltså oförändrad.
 - På Auto läses bara de första 8 sekunderna av klippet. Ett 8×-klipp som är längre än så kan
   ha skottet utanför fönstret – välj hastigheten manuellt då, för då sträcks fönstret ut lika
   mycket. Att först gissa och sedan läsa om klippet vore ett andra svep till.
+- Exempelklippen måste vara **H.264**. iPhone spelar in i HEVC, som Safari klarar men Chrome
+  och Firefox ofta inte. `examples/LeoNormal.mp4` är HEVC och fungerar därför bara i Safari –
+  exportera om den. Klipp som webbläsaren inte kan avkoda ger nu ett tydligt fel (`E_VIDEO`)
+  i stället för en laddning som snurrar för evigt, men felet kvarstår för besökaren.
 - Seek-loopen i `app.js` kan vara långsam på telefon. Sänk `SAMPLE_FPS` (15 → 10) före andra
   optimeringar. `delegate: 'GPU'` kan behöva bli `'CPU'` på vissa Android-enheter.
 

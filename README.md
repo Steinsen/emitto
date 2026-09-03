@@ -20,6 +20,7 @@ fälls ut med ett plus: varför det inte är optimalt, en övning, och en rad pe
 - `rules.js` – riktvärden, prioriteringslogik, feedbacktexter på båda språken. **Det är här du justerar.**
 - `i18n.js` – gränssnittets strängar och språkval
 - `test-units.mjs` – kontroller utan testklipp: `node test-units.mjs`
+- `examples/` – färdiga klipp som kan analyseras direkt från startsidan
 
 ## Köra lokalt
 ES-moduler kräver en webbserver (inte `file://`):
@@ -77,6 +78,8 @@ påhittade fel.
 - Riktvärdena är vuxenvärden och gäller alla åldrar. För de yngsta är de för hårda. Kalibrera mot egna klipp.
 - Skjutarmen gissas från vilken handled som når högst. Ingen manuell inställning finns.
 - Hastigheten kan bara gissas när spelaren hoppar. Vid straffkast får du välja den själv.
+- Klippet måste vara i ett format webbläsaren kan avkoda. iPhone spelar in i HEVC, som Safari
+  klarar men Chrome och Firefox ofta inte – då säger appen till i stället för att fastna.
 
 ## Nästa steg
 1. Worker som får siffrorna och formulerar feedback med en LLM (bara ettan i prioriteringen).

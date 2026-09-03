@@ -87,6 +87,14 @@
   .speedbox{background:var(--court);border-radius:var(--r);padding:14px 16px;display:grid;gap:10px;margin:0 0 26px}
   .speedbox p{margin:0;font-size:15px;color:var(--ink-soft);max-width:56ch}
 
+  /* Exempelklipp – lågmälda, det är inte sidans huvudhandling */
+  .examples h2{font-size:24px;margin:34px 0 12px}
+  .exlist{display:grid;gap:10px}
+  .exlist button{display:flex;align-items:baseline;gap:12px;text-align:left;background:var(--court);color:var(--ink);padding:14px 16px;font-size:17px}
+  .exlist .who{font-family:"Barlow Condensed";font-weight:600;font-size:21px}
+  .exlist .what{color:var(--ink-soft);font-size:15px;font-weight:400}
+  .exlist .go{margin-left:auto;color:var(--ball);font-weight:600}
+
   /* Laddning – bollen studsar medan analysen går */
   #view-loading{padding:44px 0 8px;text-align:center}
   .ball{width:58px;height:58px;margin:0 auto 22px;animation:bounce 1s cubic-bezier(.5,0,.5,1) infinite}
@@ -171,6 +179,11 @@
       </div>
     </div>
     <div class="status" id="error"></div>
+
+    <div class="examples">
+      <h2 data-i18n="examplesTitle"></h2>
+      <div class="exlist" id="examples"></div>
+    </div>
   </section>
 
   <section id="view-loading" hidden>
