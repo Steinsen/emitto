@@ -1,0 +1,6 @@
+# Repo-roten är också det som publiceras, så projektdokumentationen skulle annars ligga
+# läsbar på skott.steinsen.com. Pages _redirects stödjer bara 30x – ingen 404 – så de
+# skickas till startsidan i stället.
+/CLAUDE.md      /  302
+/README.md      /  302
+/wrangler.toml  /  302

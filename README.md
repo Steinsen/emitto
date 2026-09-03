@@ -18,9 +18,36 @@ npx serve .
 Öppna på telefonen via datorns IP eller kör i desktop-webbläsare med ett uppladdat klipp.
 
 ## Deploy på Cloudflare Pages
-Ingen build. Skapa ett Pages-projekt, peka på repot, lämna build command tom och output-katalog `/`.
-Eller direkt: `npx wrangler pages deploy .`
-Lägg till `skott.steinsen.com` som custom domain i Pages-projektet.
+Ingen build – repo-roten *är* sajten. Konfigurationen ligger i tre filer:
+
+- `wrangler.toml` – projektnamn `emitto`, `pages_build_output_dir = "."`
+- `_headers` – säkerhetsheaders, CSP och cache-regler
+- `_redirects` – skickar `/CLAUDE.md`, `/README.md` och `/wrangler.toml` till startsidan
+  (de skulle annars vara läsbara på domänen)
+
+Första gången:
+```
+npx wrangler login
+npx wrangler pages project create emitto --production-branch main
+npx wrangler pages deploy .
+```
+Sedan räcker `npx wrangler pages deploy .`. Vill du ha deploy vid varje push: koppla repot i
+Cloudflare-dashboarden i stället, lämna build command tom och sätt output-katalog till `/`.
+
+Lägg till `skott.steinsen.com` som custom domain i Pages-projektet (Pages → emitto → Custom
+domains). DNS ligger redan i Cloudflare, så CNAME:n skapas automatiskt.
+
+Testa headers och redirects lokalt innan deploy – `npx serve .` läser dem inte:
+```
+npx wrangler pages dev .
+```
+
+### CSP:n
+`connect-src` i `_headers` är den tekniska motsvarigheten till löftet att videon aldrig lämnar
+enheten: sidan får bara prata med jsDelivr (MediaPipes WASM) och storage.googleapis.com
+(pose-modellen). Klippet läses som `blob:` och kan inte skickas någonstans. Lägger du till en
+Worker för feedbacktexterna måste dess origin in i `connect-src` – och då är det bara siffror
+som skickas.
 
 ## Hur prioriteringen fungerar
 Mätvärdena graderas mot ett intervall och en tolerans (`rules.js` → `REF`). Ordningen i `PRIORITY`

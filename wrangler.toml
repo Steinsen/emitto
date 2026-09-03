@@ -1,0 +1,5 @@
+# Cloudflare Pages. Ingen build – hela repot är sajten.
+# Deploy: npx wrangler pages deploy .
+name = "emitto"
+compatibility_date = "2026-09-03"
+pages_build_output_dir = "."
