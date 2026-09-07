@@ -79,7 +79,10 @@ Bollen detekteras inte. Allt utgår från `ext` = avstånd axel→handled delat 
    armbågsvinkeln blir 30° fel.)
 3. Släpp = när `ext` passerat 35 % av vägen från set point till fullt sträckt. Sökningen går
    bakåt från fullt sträckt arm, så en skakning tidigare i dalen inte räknas som släppet.
-   Ligger ~0,1 s efter verkligt släpp – det är känt och kompenseras inte.
+   Ligger ~0,1 s efter verkligt släpp – det är känt och kompenseras inte. (Kontrollmätt på
+   `examples/20260906_130903.mp4`: bollen lämnar fingrarna mellan 1,47 och 1,53 s, och
+   detekteringen svarar 1,47–1,53 beroende på brus i ledpunkterna. På det klippet ligger
+   den alltså rätt, snarare än sent. Ändra inte 35 % utan att mäta på flera klipp.)
 4. Lägsta läge = minsta knävinkel (medel av båda ben) från 1,2 s före set point till släppet.
 5. Frånskjut = fotleden 1,5 % kroppslängd över golvnivån (median av första 0,3 s).
 
@@ -127,6 +130,11 @@ progressbaren fylls av seek-loopen.
 Resultatvyn har faserna som en svepbar rad. Tryck på ett kort ritar ut vinklarna i leden med
 färg efter status och listar fasens mätvärden mot riktvärdet. Bara de fyra bildrutor som visas
 sparas – att spara alla kostade över 100 MB på en telefon.
+
+`seek()` väntar på `requestVideoFrameCallback`, inte bara på `seeked`. Utan det kan
+`drawImage` och MediaPipe läsa den förra rutan: fasbilden visar då en pose ett par tiondelar
+före sin egen tid, med rätt skelett ovanpå fel bild. Av samma skäl är videoelementet inte
+`display:none` utan en genomskinlig pixel – en gömd video slutar måla upp rutor.
 
 Resultatet ligger kvar i `last`, så språkbyte ritar om utan att analysera igen.
 

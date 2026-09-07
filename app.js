@@ -162,7 +162,23 @@ async function loadModel() {
   return landmarker;
 }
 
-const seek = time => new Promise(res => { video.onseeked = () => res(); video.currentTime = time; });
+// Söker till en tid och väntar tills rutan verkligen är uppmålad. `seeked` säger bara att
+// sökningen är klar – bilden kan komma några tiotals millisekunder senare, och då läser
+// drawImage (och MediaPipe) den förra rutan. Symtomet är lömskt: fasbilden visar en pose
+// ett par tiondelar före sin egen tidsstämpel, medan skelettet ovanpå är ritat ur rätt
+// ruta. requestVideoFrameCallback anmäls före sökningen, så att den utlöses av just den
+// ruta vi sökte till. Firefox saknar den och får två animationsrutor i stället.
+const seek = time => new Promise(res => {
+  let done = false;
+  const ready = () => { if (done) return; done = true; video.onseeked = null; res(); };
+  if (video.requestVideoFrameCallback) {
+    video.requestVideoFrameCallback(ready);
+    video.onseeked = () => setTimeout(ready, 120);   // reserv om ingen ruta målas upp
+  } else {
+    video.onseeked = () => requestAnimationFrame(() => requestAnimationFrame(ready));
+  }
+  video.currentTime = time;
+});
 
 // Väntar på klippets metadata. Kan webbläsaren inte avkoda formatet kommer aldrig
 // loadedmetadata – då kastar vi i stället för att låta laddningen snurra i evighet.
