@@ -162,23 +162,53 @@ async function loadModel() {
   return landmarker;
 }
 
-// Söker till en tid och väntar tills rutan verkligen är uppmålad. `seeked` säger bara att
-// sökningen är klar – bilden kan komma några tiotals millisekunder senare, och då läser
-// drawImage (och MediaPipe) den förra rutan. Symtomet är lömskt: fasbilden visar en pose
-// ett par tiondelar före sin egen tidsstämpel, medan skelettet ovanpå är ritat ur rätt
-// ruta. requestVideoFrameCallback anmäls före sökningen, så att den utlöses av just den
-// ruta vi sökte till. Firefox saknar den och får två animationsrutor i stället.
-const seek = time => new Promise(res => {
+// Söker till en tid och lämnar tillbaka tiden på den ruta som faktiskt målades upp.
+//
+// Två saker går fel om man bara väntar på `seeked`: händelsen kan komma innan bilden är
+// framme, och en sökning kan landa på en annan ruta än den vi bad om – båda vanliga med
+// hårdvaruavkodning på telefon. Symtomet är lömskt: fasbilden visar en pose ett par
+// tiondelar från sin egen tidsstämpel, med rätt skelett ritat ovanpå fel bild.
+//
+// requestVideoFrameCallback löser båda: den utlöses när rutan är uppmålad, och `mediaTime`
+// säger vilken ruta det blev. Vi anmäler den före sökningen, och litar aldrig på tiden vi
+// bad om – bara på den vi fick. Firefox saknar callbacken; där får vi två animationsrutor
+// och får nöja oss med den begärda tiden.
+const seekOnce = time => new Promise(res => {
   let done = false;
-  const ready = () => { if (done) return; done = true; video.onseeked = null; res(); };
+  const ready = got => { if (done) return; done = true; video.onseeked = null; res(got); };
   if (video.requestVideoFrameCallback) {
-    video.requestVideoFrameCallback(ready);
-    video.onseeked = () => setTimeout(ready, 120);   // reserv om ingen ruta målas upp
+    video.requestVideoFrameCallback((now, meta) => ready(meta.mediaTime));
+    video.onseeked = () => setTimeout(() => ready(null), 120);   // reserv: ingen ruta målades
   } else {
-    video.onseeked = () => requestAnimationFrame(() => requestAnimationFrame(ready));
+    video.onseeked = () => requestAnimationFrame(() => requestAnimationFrame(() => ready(null)));
   }
   video.currentTime = time;
 });
+
+// Landade vi fel går vi tillbaka en bit och söker fram igen: andra steget blir en kort
+// sökning framåt, som webbläsaren avkodar ruta för ruta. Ger vi upp lämnar vi tillbaka
+// tiden vi faktiskt fick, aldrig den vi bad om – då stämmer i alla fall bild och siffra.
+const HALF_FRAME = 1 / 60;
+
+async function seek(time) {
+  let got = await seekOnce(time);
+  for (let i = 0; got != null && Math.abs(got - time) > HALF_FRAME && i < 2; i++) {
+    await seekOnce(Math.max(0, time - 0.4 - i * 0.4));
+    got = await seekOnce(time);
+  }
+  return got == null ? time : got;
+}
+
+// Sparad ruta → något drawImage kan rita. createImageBitmap finns i alla webbläsare vi
+// bryr oss om; <img> är reserv och släpper sin URL när bilden är läst.
+const decode = blob => (window.createImageBitmap
+  ? createImageBitmap(blob)
+  : new Promise((res, rej) => {
+      const url = URL.createObjectURL(blob), img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); res(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('E_VIDEO')); };
+      img.src = url;
+    }));
 
 // Väntar på klippets metadata. Kan webbläsaren inte avkoda formatet kommer aldrig
 // loadedmetadata – då kastar vi i stället för att låta laddningen snurra i evighet.
@@ -203,13 +233,28 @@ async function analyze() {
   // lika många sekunder av rörelsen. På Auto vet vi inte, så vi tar de första åtta.
   const span = Math.min(video.duration, MAX_SECONDS * (speedChoice === 'auto' ? 1 : speedChoice));
   const step = 1 / SAMPLE_FPS;
+
+  // Bilden till fasrutorna sparas här, i samma ögonblick som MediaPipe läser videon –
+  // inte genom att söka tillbaka efteråt. Det är hela poängen: två sökningar till samma
+  // tid behöver inte ge samma ruta på en telefon, och då hamnar rätt skelett på fel bild.
+  // Nu kommer ledpunkter och bild ur samma avläsning och kan inte glida isär.
+  // En ruta i kortstorlek blir ~35 kB som JPEG: ~4 MB för ett klipp på åtta sekunder.
+  const grab = document.createElement('canvas');
+  grab.height = PHASE_H;
+  grab.width = Math.round(PHASE_H * aspect);
+  const gctx = grab.getContext('2d');
+
   const frames = [];
   let ts = 0;
   for (let time = 0; time <= span; time += step) {
-    await seek(time);
+    const at = await seek(time);   // rutans egen tid, inte den vi bad om
     ts += Math.round(step * 1000) + 1; // måste vara strikt ökande
     const res = landmarker.detectForVideo(video, ts);
-    if (res.landmarks && res.landmarks[0]) frames.push({ t: time, lm: res.landmarks[0] });
+    if (res.landmarks && res.landmarks[0]) {
+      gctx.drawImage(video, 0, 0, grab.width, grab.height);
+      const shot = await new Promise(done => grab.toBlob(done, 'image/jpeg', 0.7));
+      frames.push({ t: at, lm: res.landmarks[0], shot });
+    }
     bar.style.width = `${(time / span) * 90}%`;
   }
   if (frames.length < 10) throw new Error('E_NO_PERSON');
@@ -225,8 +270,8 @@ function resolveSpeed(sig) {
   return est ? { factor: est.factor, source: 'jump', est } : { factor: 1, source: 'assumed' };
 }
 
-// Räknar fram allt från redan avlästa ledpunkter. Körs om vid hastighetsbyte – MediaPipe
-// behöver inte gå igen, bara de fyra bildrutorna hämtas på nytt.
+// Räknar fram allt från redan avlästa ledpunkter och redan tagna bilder. Körs om vid
+// hastighetsbyte – varken MediaPipe eller videon behöver gå igen.
 async function compute(frames, side, aspect) {
   const sig0 = signals(frames, side, aspect);
   const speed = resolveSpeed(sig0);
@@ -234,16 +279,16 @@ async function compute(frames, side, aspect) {
   const ph = findPhases(sig);
   const m = metrics(sig, ph);
 
-  // Bara de fyra bildrutor som visas sparas. Att spara alla kostade över 100 MB på en telefon.
+  // Fasernas bilder är redan tagna, ur samma avläsning som ledpunkterna. Här ritas de
+  // bara upp – videon rörs inte längre, så ett hastighetsbyte kostar ingen sökning alls.
   $('loadmsg').textContent = t('loadingFrames');
   const shots = [];
   for (const p of PHASES) {
     const idx = ph[p.key];
-    await seek(frames[idx].t);   // videons egen tid, inte den omskalade
     const c = document.createElement('canvas');
     c.height = PHASE_H;
     c.width = Math.round(PHASE_H * aspect);
-    c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+    c.getContext('2d').drawImage(await decode(frames[idx].shot), 0, 0, c.width, c.height);
     shots.push({ ...p, canvas: c, lm: frames[idx].lm, time: sig[idx].t });
   }
   bar.style.width = '100%';
