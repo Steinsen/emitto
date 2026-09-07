@@ -47,7 +47,10 @@
   button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--ball);outline-offset:2px}
   .ghost{background:var(--court);color:var(--ink)}
 
-  video{display:none}
+  /* Videon syns inte, men den ligger kvar i layouten som en enda pixel. Med display:none
+     slutar webbläsaren måla upp rutor, och då kan drawImage och MediaPipe få den förra
+     rutan efter en sökning – fasbilderna hamnar före sina egna tider. */
+  video{position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:.01;z-index:-1;pointer-events:none}
   #progress{height:5px;background:var(--court);border-radius:3px;overflow:hidden;margin:12px auto 6px;max-width:240px}
   #progress i{display:block;height:100%;width:0;background:var(--ball);transition:width .15s}
   .status{color:var(--ink-soft);font-size:15px;min-height:1.4em}
