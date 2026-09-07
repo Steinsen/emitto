@@ -162,23 +162,42 @@ async function loadModel() {
   return landmarker;
 }
 
-// Söker till en tid och väntar tills rutan verkligen är uppmålad. `seeked` säger bara att
-// sökningen är klar – bilden kan komma några tiotals millisekunder senare, och då läser
-// drawImage (och MediaPipe) den förra rutan. Symtomet är lömskt: fasbilden visar en pose
-// ett par tiondelar före sin egen tidsstämpel, medan skelettet ovanpå är ritat ur rätt
-// ruta. requestVideoFrameCallback anmäls före sökningen, så att den utlöses av just den
-// ruta vi sökte till. Firefox saknar den och får två animationsrutor i stället.
-const seek = time => new Promise(res => {
+// Söker till en tid och lämnar tillbaka tiden på den ruta som faktiskt målades upp.
+//
+// Två saker går fel om man bara väntar på `seeked`: händelsen kan komma innan bilden är
+// framme, och en sökning kan landa på en annan ruta än den vi bad om – båda vanliga med
+// hårdvaruavkodning på telefon. Symtomet är lömskt: fasbilden visar en pose ett par
+// tiondelar från sin egen tidsstämpel, med rätt skelett ritat ovanpå fel bild.
+//
+// requestVideoFrameCallback löser båda: den utlöses när rutan är uppmålad, och `mediaTime`
+// säger vilken ruta det blev. Vi anmäler den före sökningen, och litar aldrig på tiden vi
+// bad om – bara på den vi fick. Firefox saknar callbacken; där får vi två animationsrutor
+// och får nöja oss med den begärda tiden.
+const seekOnce = time => new Promise(res => {
   let done = false;
-  const ready = () => { if (done) return; done = true; video.onseeked = null; res(); };
+  const ready = got => { if (done) return; done = true; video.onseeked = null; res(got); };
   if (video.requestVideoFrameCallback) {
-    video.requestVideoFrameCallback(ready);
-    video.onseeked = () => setTimeout(ready, 120);   // reserv om ingen ruta målas upp
+    video.requestVideoFrameCallback((now, meta) => ready(meta.mediaTime));
+    video.onseeked = () => setTimeout(() => ready(null), 120);   // reserv: ingen ruta målades
   } else {
-    video.onseeked = () => requestAnimationFrame(() => requestAnimationFrame(ready));
+    video.onseeked = () => requestAnimationFrame(() => requestAnimationFrame(() => ready(null)));
   }
   video.currentTime = time;
 });
+
+// Landade vi fel går vi tillbaka en bit och söker fram igen: andra steget blir en kort
+// sökning framåt, som webbläsaren avkodar ruta för ruta. Ger vi upp lämnar vi tillbaka
+// tiden vi faktiskt fick, aldrig den vi bad om – då stämmer i alla fall bild och siffra.
+const HALF_FRAME = 1 / 60;
+
+async function seek(time) {
+  let got = await seekOnce(time);
+  for (let i = 0; got != null && Math.abs(got - time) > HALF_FRAME && i < 2; i++) {
+    await seekOnce(Math.max(0, time - 0.4 - i * 0.4));
+    got = await seekOnce(time);
+  }
+  return got == null ? time : got;
+}
 
 // Väntar på klippets metadata. Kan webbläsaren inte avkoda formatet kommer aldrig
 // loadedmetadata – då kastar vi i stället för att låta laddningen snurra i evighet.
@@ -206,10 +225,10 @@ async function analyze() {
   const frames = [];
   let ts = 0;
   for (let time = 0; time <= span; time += step) {
-    await seek(time);
+    const at = await seek(time);   // rutans egen tid, inte den vi bad om
     ts += Math.round(step * 1000) + 1; // måste vara strikt ökande
     const res = landmarker.detectForVideo(video, ts);
-    if (res.landmarks && res.landmarks[0]) frames.push({ t: time, lm: res.landmarks[0] });
+    if (res.landmarks && res.landmarks[0]) frames.push({ t: at, lm: res.landmarks[0] });
     bar.style.width = `${(time / span) * 90}%`;
   }
   if (frames.length < 10) throw new Error('E_NO_PERSON');
