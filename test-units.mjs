@@ -173,6 +173,51 @@ let noShot = null;
 try { phasesOf(dribble); } catch (e) { noShot = e.message; }
 ok('dribbling ger E_NO_SHOT', noShot === 'E_NO_SHOT', noShot || 'inget fel kastades');
 
+// ---------------------------------------------------------------- riktigt klipp
+//
+// Ledpunkterna i fixtures/ är avlästa ur examples/20260906_130903.mp4 med samma modell
+// och samma 15 rutor/s som appen använder, så det här är hela kedjan på riktiga data –
+// utan att testet behöver klippet eller MediaPipe. Klippet är just det som visade buggen:
+// spelaren tar emot bollen och sänker den innan skottet, och den rörelsen sträcker armen
+// mer (ext 0,60 → 0,99) än skottet gör.
+
+function fixture(name) {
+  const f = JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8'));
+  const frames = f.rutor.map(r => {
+    const lm = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5 }));
+    f.leder.forEach((idx, k) => { lm[idx] = { x: r.lm[k][0], y: r.lm[k][1] }; });
+    return { t: r.t, lm };
+  });
+  const sig = signals(frames, pickSide(frames, 'auto'), f.aspect);
+  const ph = findPhases(sig);
+  return { sig, ph, m: metrics(sig, ph), at: k => sig[ph[k]].t };
+}
+
+const real = fixture('catch-then-shot_lm');
+// Skottet ligger på 1,3–1,6 s. Allt före 1,2 s är boll som tas emot och sänks.
+ok('klipp: släppet ligger i skottet', real.at('release') > 1.2 && real.at('release') < 1.7, `${real.at('release').toFixed(2)} s`);
+ok('klipp: handleden är över huvudet vid släppet',
+  real.sig[real.ph.release].wristY < real.sig[real.ph.release].noseY);
+ok('klipp: lägsta läge i dippen', near(real.at('lowest'), 1.27, 0.15), `${real.at('lowest').toFixed(2)} s`);
+ok('klipp: knät är böjt i lägsta läget', real.m.kneeMin < 150, `${real.m.kneeMin.toFixed(0)}°`);
+ok('klipp: set point mellan dipp och släpp',
+  real.at('set') >= real.at('lowest') && real.at('set') < real.at('release'), `${real.at('set').toFixed(2)} s`);
+ok('klipp: armbågen i set point är rimlig', real.m.elbowSet > 70 && real.m.elbowSet < 130, `${real.m.elbowSet.toFixed(0)}°`);
+ok('klipp: släpphöjden är över en kroppslängd', real.m.releaseHeight > 1, real.m.releaseHeight.toFixed(2));
+
+// Och samma vakt som för den syntetiska streckgubben: den gamla regeln lade sträckningen
+// i fångsten. Går den här raden sönder testar resten inte längre rätt sak.
+{
+  const win = Math.round(15 * 0.4);
+  const sig = real.sig;
+  let burst = 0, best = -Infinity;
+  for (let i = 0; i + win < sig.length; i++) {
+    const rise = sig[i + win].ext - sig[i].ext;
+    if (rise > best) { best = rise; burst = i; }
+  }
+  ok('klipp: gamla regeln föll för fångsten', sig[burst].t < 1.0, `${sig[burst].t.toFixed(2)} s`);
+}
+
 // ---------------------------------------------------------------- prioritering
 // Jalen-fallet: tvåstegsskott med paus, ~1,05 s lägsta→släpp, knä ~100°.
 // Fokus ska bli tiden, inte något annat.

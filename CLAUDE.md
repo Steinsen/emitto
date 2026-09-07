@@ -23,6 +23,7 @@ tränare i loopen. Gränssnittet finns på svenska och engelska.
 | `rules.js` | riktvärden, prioritering, feedbacktexter på båda språken | gränser, texter, ordning |
 | `i18n.js` | gränssnittets strängar, språkval och språkdetektering | UI-texter, nytt språk |
 | `test-units.mjs` | kontroller som inte behöver klipp | hastighet, prioritering, språk |
+| `fixtures/` | ledpunkter ur ett riktigt klipp som JSON, för testerna. Publiceras inte | fasdetekteringen ändras |
 | `examples/` | färdiga klipp som kan analyseras utan eget klipp | nytt exempel läggs till i `EXAMPLES` i `app.js` |
 | `logo.svg`, `icon.svg`, `fonts/` | varumärke | aldrig utan anledning |
 | `wrangler.toml`, `_headers`, `.assetsignore` | deploy: projekt, headers/CSP, vad som inte publiceras | deployen ändras |
@@ -38,7 +39,8 @@ beskriver: ändrar du ett riktvärde ska texten bredvid ändras i samma fil.
 
 ```
 npx serve .              # lokal server (file:// fungerar inte med ES-moduler)
-node test-units.mjs      # kontroller utan testklipp: hastighetsgissning, prioritering, språknycklar
+node test-units.mjs      # kontroller utan testklipp: hastighetsgissning, fasdetektering
+                         # (syntetisk streckgubbe + ledpunkter i fixtures/), prioritering, språk
 node test.mjs            # kör analys + regler mot samples/*_lm.json, skriver faser och fokus
 npx wrangler deploy      # publicera
 npx wrangler dev --persist-to /tmp/emitto-dev   # enda sättet att testa _headers lokalt.
@@ -68,10 +70,13 @@ Bollen detekteras inte. Allt utgår från `ext` = avstånd axel→handled delat 
    och ha stigit minst 0,3 under fönstret. Utan det kravet vinner ofta en annan rörelse:
    att ta emot bollen, sänka den eller dribbla sträcker armen lika mycket – men framåt och
    nedåt. Finns flera skott i klippet vinner det med störst utslag.
-2. Set point = botten av dalen närmast före sträckningen. Vi går bakåt från sträckningen så
-   länge armen fortsätter vikas och stannar när `ext` stigit 0,15 över dalens botten – då är
-   vi ur dalen och inne i en annan rörelse. (Att ta bara minsta `ext` under 1,5 s bakåt gör
-   att en djupare armvikning tidigare, som en boll som tas emot vid bröstet, vinner.)
+2. Set point = botten av dalen närmast sträckningen. Fönstret med störst utslag kan börja en
+   ruta eller två före armens djupaste vikning, så vi går först framåt så länge armen
+   fortsätter vikas (max 0,3 s) och sedan bakåt från botten. Bakåtvandringen stannar när `ext`
+   stigit 0,15 över dalens botten – då är vi ur dalen och inne i en annan rörelse. (Att ta
+   bara minsta `ext` under 1,5 s bakåt gör att en djupare armvikning tidigare, som en boll som
+   tas emot vid bröstet, vinner; utan steget framåt hamnar set point en ruta för tidigt och
+   armbågsvinkeln blir 30° fel.)
 3. Släpp = när `ext` passerat 35 % av vägen från set point till fullt sträckt. Sökningen går
    bakåt från fullt sträckt arm, så en skakning tidigare i dalen inte räknas som släppet.
    Ligger ~0,1 s efter verkligt släpp – det är känt och kompenseras inte.
@@ -81,9 +86,13 @@ Bollen detekteras inte. Allt utgår från `ext` = avstånd axel→handled delat 
 Hittas ingen kandidat som klarar höjdkraven kastas `E_NO_SHOT`. Hellre "jag hittar inget
 skott" än fyra faser ur fel sekund.
 
-`test-units.mjs` bygger en syntetisk streckgubbe av nyckelposer och kör hela kedjan
-(`signals` → `findPhases` → `metrics`) på den. Det klipp som börjar med att spelaren tar emot
-bollen är regressionstestet: den gamla regeln lade faserna i fångsten, den nya i skottet.
+`test-units.mjs` täcker det här på två sätt, båda utan att behöva klipp eller MediaPipe: en
+syntetisk streckgubbe byggd av nyckelposer, och riktiga ledpunkter i
+`fixtures/catch-then-shot_lm.json` (avlästa ur `examples/20260906_130903.mp4`, 15 rutor/s,
+bara de leder `analysis.js` läser). Båda börjar med att bollen tas emot och sänks – det är
+regressionstestet: den gamla regeln lade faserna i fångsten, den nya i skottet. Testerna
+kontrollerar också att den gamla regeln fortfarande faller för fångsten, så att de inte tyst
+slutar testa rätt sak den dagen fixturen byts ut.
 
 Skjutarm = den handled som når högst. Vinklar räknas med bildens aspect ratio, annars blir de fel
 i stående video.
@@ -147,8 +156,9 @@ och landade där – bedömningen av ett givet klipp är alltså oförändrad.
   ha skottet utanför fönstret – välj hastigheten manuellt då, för då sträcks fönstret ut lika
   mycket. Att först gissa och sedan läsa om klippet vore ett andra svep till.
 - Exempelklippen måste vara **H.264**. iPhone spelar in i HEVC, som Safari klarar men Chrome
-  och Firefox ofta inte. `examples/LeoNormal.mp4` är HEVC och fungerar därför bara i Safari –
-  exportera om den. Klipp som webbläsaren inte kan avkoda ger nu ett tydligt fel (`E_VIDEO`)
+  och Firefox ofta inte. `examples/LeoNormal.mp4` och `examples/20260906_130903.mp4` är båda
+  HEVC (`hvc1`, 1920×1080 med rotationsflagga) och fungerar därför bara i Safari – exportera
+  om dem. 20260906 ligger inte i `EXAMPLES` i `app.js` ännu, just därför. Klipp som webbläsaren inte kan avkoda ger nu ett tydligt fel (`E_VIDEO`)
   i stället för en laddning som snurrar för evigt, men felet kvarstår för besökaren.
 - Seek-loopen i `app.js` kan vara långsam på telefon. Sänk `SAMPLE_FPS` (15 → 10) före andra
   optimeringar. `delegate: 'GPU'` kan behöva bli `'CPU'` på vissa Android-enheter.

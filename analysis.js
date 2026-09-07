@@ -126,11 +126,16 @@ export function findPhases(sig) {
   }
   if (burst < 0) throw new Error('E_NO_SHOT');
 
-  // 2. Set point: botten av dalen närmast före sträckningen. Vi går bakåt så länge armen
-  //    fortsätter vikas och stannar när den tydligt öppnar sig igen – då är vi ur dalen
-  //    och inne i en annan rörelse.
+  // 2. Set point: botten av dalen närmast sträckningen. Fönstret med störst utslag kan
+  //    börja en ruta eller två före armens djupaste vikning, så vi går först framåt så
+  //    länge armen fortsätter vikas, och sedan bakåt från botten. Bakåtvandringen stannar
+  //    när armen tydligt öppnat sig igen – då är vi ur dalen och inne i en annan rörelse.
   let set = burst;
-  for (let i = burst; i >= Math.max(0, burst - Math.round(fps * 1.5)); i--) {
+  for (let i = burst + 1; i <= Math.min(full, burst + Math.round(fps * 0.3)); i++) {
+    if (sig[i].ext > sig[set].ext) break;
+    set = i;
+  }
+  for (let i = set; i >= Math.max(0, set - Math.round(fps * 1.5)); i--) {
     if (sig[i].ext < sig[set].ext) set = i;
     else if (sig[i].ext > sig[set].ext + VALLEY_OUT) break;
   }
