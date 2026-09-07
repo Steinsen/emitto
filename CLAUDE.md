@@ -128,13 +128,20 @@ startar av sig själv när en fil valts – ingen knapp. Under laddningen studsa
 progressbaren fylls av seek-loopen.
 
 Resultatvyn har faserna som en svepbar rad. Tryck på ett kort ritar ut vinklarna i leden med
-färg efter status och listar fasens mätvärden mot riktvärdet. Bara de fyra bildrutor som visas
-sparas – att spara alla kostade över 100 MB på en telefon.
+färg efter status och listar fasens mätvärden mot riktvärdet.
 
-`seek()` väntar på `requestVideoFrameCallback`, inte bara på `seeked`. Utan det kan
-`drawImage` och MediaPipe läsa den förra rutan: fasbilden visar då en pose ett par tiondelar
-före sin egen tid, med rätt skelett ovanpå fel bild. Av samma skäl är videoelementet inte
-`display:none` utan en genomskinlig pixel – en gömd video slutar måla upp rutor.
+**Fasbilden tas i analyssvepet, inte efteråt.** Varje avläst ruta sparas som JPEG i
+kortstorlek (~35 kB, ~4 MB för åtta sekunder) i samma ögonblick som MediaPipe läser videon.
+Att i stället söka tillbaka till fasens tid efteråt gav fel bild på telefon: två sökningar
+till samma tid behöver inte ge samma ruta, och då hamnar rätt skelett på fel bild. Att vänta
+på `requestVideoFrameCallback` och att kontrollera `mediaTime` räckte inte – därför finns
+ingen andra sökning kvar alls. Att spara rutorna i full upplösning kostade över 100 MB; i
+kortstorlek som JPEG är det en bråkdel.
+
+`seek()` i svepet väntar ändå på `requestVideoFrameCallback` och läser `mediaTime`: rutans
+egen tid blir dess `t`, aldrig den vi bad om. Landar sökningen fel går den tillbaka 0,4 s och
+söker fram igen, två gånger. Av samma skäl är videoelementet inte `display:none` utan en
+genomskinlig pixel – en gömd video slutar måla upp rutor.
 
 Resultatet ligger kvar i `last`, så språkbyte ritar om utan att analysera igen.
 
