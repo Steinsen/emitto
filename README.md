@@ -74,6 +74,9 @@ påhittade fel.
 ## Kända begränsningar
 - Sidovy krävs. Fotställning i bredd syns inte.
 - Bollen detekteras inte; släppet uppskattas från armsträckningen (ca 0,1 s senare än verkligt släpp).
+- Skottet väljs som den armsträckning som slutar med handleden över huvudet. Innehåller klippet
+  flera skott analyseras det med störst utslag. Syns ingen sådan sträckning säger appen att den
+  inte hittar något skott.
 - Armbågsvinkeln är brusig när bollen skymmer armen. Lita mer på knä, tid och släpphöjd.
 - Riktvärdena är vuxenvärden och gäller alla åldrar. För de yngsta är de för hårda. Kalibrera mot egna klipp.
 - Skjutarmen gissas från vilken handled som når högst. Ingen manuell inställning finns.

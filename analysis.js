@@ -45,19 +45,26 @@ export function signals(frames, side, aspect) {
     ? { hip: L.lHip, knee: L.lKnee, ank: L.lAnk }
     : { hip: L.rHip, knee: L.rKnee, ank: L.rAnk };
 
-  const raw = frames.map(({ t, lm }) => ({
-    t,
-    knee: (angle(P(lm, S.hip), P(lm, S.knee), P(lm, S.ank)) + angle(P(lm, O.hip), P(lm, O.knee), P(lm, O.ank))) / 2,
-    hip: angle(P(lm, S.sho), P(lm, S.hip), P(lm, S.knee)),
-    elbow: angle(P(lm, S.sho), P(lm, S.elb), P(lm, S.wri)),
-    trunk: trunkLean(P(lm, S.sho), P(lm, S.hip)),
-    wristY: lm[S.wri].y, noseY: lm[L.nose].y, shoY: lm[S.sho].y,
-    // armsträckning: avstånd axel→handled i förhållande till bålens längd (0,5 = vikt arm, 1+ = sträckt)
-    ext: Math.hypot((lm[S.sho].x - lm[S.wri].x) * aspect, lm[S.sho].y - lm[S.wri].y)
-       / (Math.hypot((lm[S.sho].x - lm[S.hip].x) * aspect, lm[S.sho].y - lm[S.hip].y) || 1),
-    ankleY: (lm[S.ank].y + lm[O.ank].y) / 2,
-  }));
-  const keys = ['knee', 'hip', 'elbow', 'trunk', 'wristY', 'ankleY', 'ext'];
+  const raw = frames.map(({ t, lm }) => {
+    const sho = P(lm, S.sho), wri = P(lm, S.wri), hip = P(lm, S.hip);
+    const torso = Math.hypot(sho.x - hip.x, sho.y - hip.y) || 1;
+    return {
+      t,
+      knee: (angle(P(lm, S.hip), P(lm, S.knee), P(lm, S.ank)) + angle(P(lm, O.hip), P(lm, O.knee), P(lm, O.ank))) / 2,
+      hip: angle(P(lm, S.sho), P(lm, S.hip), P(lm, S.knee)),
+      elbow: angle(P(lm, S.sho), P(lm, S.elb), P(lm, S.wri)),
+      trunk: trunkLean(sho, hip),
+      wristY: lm[S.wri].y, noseY: lm[L.nose].y, shoY: lm[S.sho].y,
+      // armsträckning: avstånd axel→handled i förhållande till bålens längd (0,5 = vikt arm, 1+ = sträckt)
+      ext: Math.hypot(sho.x - wri.x, sho.y - wri.y) / torso,
+      // ...och samma sträckning bara i höjdled: positiv när handleden är ovanför axeln.
+      // Det är den som skiljer ett skott från att ta emot bollen, släppa ned den eller
+      // dribbla – rörelser som sträcker armen lika mycket, men framåt eller nedåt.
+      extUp: (sho.y - wri.y) / torso,
+      ankleY: (lm[S.ank].y + lm[O.ank].y) / 2,
+    };
+  });
+  const keys = ['knee', 'hip', 'elbow', 'trunk', 'wristY', 'ankleY', 'ext', 'extUp'];
   const sm = {};
   for (const k of keys) sm[k] = smooth(raw.map(r => r[k]));
   return raw.map((r, i) => { const o = { ...r }; for (const k of keys) o[k] = sm[k][i]; return o; });
@@ -75,30 +82,70 @@ export function floorLevel(sig) {
   return { fps, ankleBase, noseBase, bodyPx: (ankleBase - noseBase) / 0.87 }; // näsa→fotled ≈ 87 % av kroppslängden
 }
 
+// Krav på en skottkandidat. Måtten är i bållängder (axel→höft), så de gäller oavsett
+// spelarens storlek och kamerans avstånd.
+//
+// RISE_MIN: armen måste sträckas så här mycket under fönstret. Som förr.
+// ARM_UP_MIN: handleden måste nå så här långt ovanför axeln. Ett släpp går över huvudet
+//   (armen är ungefär en bållängd), så 0,5 har god marginal – men att ta emot en boll,
+//   sänka den eller dribbla stannar under axelhöjd och sållas bort.
+// UP_RISE_MIN: och den ska ha stigit dit under fönstret, inte redan ha varit uppe.
+const RISE_MIN = 0.15;
+const ARM_UP_MIN = 0.5;
+const UP_RISE_MIN = 0.3;
+// Hur mycket ext får stiga på vägen bakåt innan vi anser oss ha klättrat ur dalen före
+// sträckningen. Håller set point i rörelsen som blev skottet i stället för i en djupare
+// armvikning tidigare i klippet (en boll som tas emot vid bröstet, till exempel).
+const VALLEY_OUT = 0.15;
+
 export function findPhases(sig) {
   const n = sig.length;
   if (n < 10) throw new Error('E_FEW_FRAMES');
   const { fps, ankleBase, noseBase, bodyPx } = floorLevel(sig);
 
-  // 1. Sträckningsfasen: 0,4 s-fönstret där armen sträcks mest
+  // 1. Sträckningsfasen: 0,4 s-fönstret där armen sträcks mest – men bara bland fönster
+  //    som slutar med handleden över huvudet. Att bara ta det största utslaget i ext gör
+  //    att klipp där spelaren först fångar bollen eller dribblar kan låsa fast analysen
+  //    på fel rörelse; kravet på höjd avgör vilket av utslagen som faktiskt är ett skott.
+  //    Finns flera skott i klippet vinner det med störst utslag.
   const win = Math.max(2, Math.round(fps * 0.4));
-  let burst = 0, bestRise = -Infinity;
+  const tail = i => Math.min(n - 1, i + win + 2);   // sträckningen kan toppa strax efter fönstret
+  let burst = -1, full = -1, bestScore = -Infinity;
   for (let i = 0; i + win < n; i++) {
-    const rise = sig[i + win].ext - sig[i].ext;
-    if (rise > bestRise) { bestRise = rise; burst = i; }
+    if (sig[i + win].ext - sig[i].ext < RISE_MIN) continue;
+    let top = i, up = -Infinity;
+    for (let k = i; k <= tail(i); k++) {
+      if (sig[k].ext > sig[top].ext) top = k;
+      if (sig[k].extUp > up) up = sig[k].extUp;
+    }
+    if (up < ARM_UP_MIN) continue;                  // armen sträcks, men inte uppåt
+    const upRise = up - sig[i].extUp;
+    if (upRise < UP_RISE_MIN) continue;             // handleden var redan uppe: ingen sträckning
+    const score = (sig[top].ext - sig[i].ext) + upRise;
+    if (score > bestScore) { bestScore = score; burst = i; full = top; }
   }
-  if (bestRise < 0.15) throw new Error('E_NO_SHOT');
+  if (burst < 0) throw new Error('E_NO_SHOT');
 
-  // 2. Set point: armen som mest vikt under 1,5 s före sträckningen
+  // 2. Set point: botten av dalen närmast sträckningen. Fönstret med störst utslag kan
+  //    börja en ruta eller två före armens djupaste vikning, så vi går först framåt så
+  //    länge armen fortsätter vikas, och sedan bakåt från botten. Bakåtvandringen stannar
+  //    när armen tydligt öppnat sig igen – då är vi ur dalen och inne i en annan rörelse.
   let set = burst;
-  for (let i = Math.max(0, burst - Math.round(fps * 1.5)); i <= burst; i++) if (sig[i].ext < sig[set].ext) set = i;
+  for (let i = burst + 1; i <= Math.min(full, burst + Math.round(fps * 0.3)); i++) {
+    if (sig[i].ext > sig[set].ext) break;
+    set = i;
+  }
+  for (let i = set; i >= Math.max(0, set - Math.round(fps * 1.5)); i--) {
+    if (sig[i].ext < sig[set].ext) set = i;
+    else if (sig[i].ext > sig[set].ext + VALLEY_OUT) break;
+  }
 
-  // 3. Släpp: halvvägs i sträckningen (mellan set point och fullt sträckt arm)
-  let full = burst;
-  for (let i = burst; i <= Math.min(n - 1, burst + win + 2); i++) if (sig[i].ext > sig[full].ext) full = i;
+  // 3. Släpp: en bit in i sträckningen (mellan set point och fullt sträckt arm)
   const mid = sig[set].ext + 0.35 * (sig[full].ext - sig[set].ext); // bollen lämnar handen tidigt i sträckningen
+  // Vi går bakåt från fullt sträckt arm och tar första rutan i den sammanhängande
+  // sträckningen. Bakåt, så att en skakning tidigare i dalen inte räknas som släppet.
   let release = full;
-  for (let i = set; i <= full; i++) if (sig[i].ext >= mid) { release = i; break; }
+  for (let i = full; i > set; i--) { if (sig[i].ext < mid) break; release = i; }
 
   // 4. Lägsta läge: minsta knävinkel från 1,2 s före set point fram till släppet
   let lowest = Math.max(0, set - Math.round(fps * 1.2));

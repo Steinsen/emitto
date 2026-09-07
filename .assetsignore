@@ -13,6 +13,9 @@ node_modules
 # Testklipp. Gitignorade, men ligger kvar lokalt när man deployar från sin maskin.
 samples
 
+# Ledpunkter för testerna. Hör hemma i repot, men inte på domänen.
+fixtures
+
 # Dokumentation och konfiguration hör inte hemma på domänen.
 CLAUDE.md
 README.md
