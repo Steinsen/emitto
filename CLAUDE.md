@@ -63,12 +63,27 @@ mot klippen innan du går vidare.
 
 Bollen detekteras inte. Allt utgår från `ext` = avstånd axel→handled delat med bålens längd.
 
-1. Sträckningsfasen = 0,4 s-fönstret där `ext` ökar mest.
-2. Set point = minsta `ext` under 1,5 s före sträckningen.
-3. Släpp = när `ext` passerat 35 % av vägen från set point till fullt sträckt. Ligger ~0,1 s
-   efter verkligt släpp – det är känt och kompenseras inte.
+1. Sträckningsfasen = 0,4 s-fönstret där `ext` ökar mest **bland de fönster som slutar med
+   handleden över huvudet**. `extUp` (handledens höjd över axeln, i bållängder) måste nå 0,5
+   och ha stigit minst 0,3 under fönstret. Utan det kravet vinner ofta en annan rörelse:
+   att ta emot bollen, sänka den eller dribbla sträcker armen lika mycket – men framåt och
+   nedåt. Finns flera skott i klippet vinner det med störst utslag.
+2. Set point = botten av dalen närmast före sträckningen. Vi går bakåt från sträckningen så
+   länge armen fortsätter vikas och stannar när `ext` stigit 0,15 över dalens botten – då är
+   vi ur dalen och inne i en annan rörelse. (Att ta bara minsta `ext` under 1,5 s bakåt gör
+   att en djupare armvikning tidigare, som en boll som tas emot vid bröstet, vinner.)
+3. Släpp = när `ext` passerat 35 % av vägen från set point till fullt sträckt. Sökningen går
+   bakåt från fullt sträckt arm, så en skakning tidigare i dalen inte räknas som släppet.
+   Ligger ~0,1 s efter verkligt släpp – det är känt och kompenseras inte.
 4. Lägsta läge = minsta knävinkel (medel av båda ben) från 1,2 s före set point till släppet.
 5. Frånskjut = fotleden 1,5 % kroppslängd över golvnivån (median av första 0,3 s).
+
+Hittas ingen kandidat som klarar höjdkraven kastas `E_NO_SHOT`. Hellre "jag hittar inget
+skott" än fyra faser ur fel sekund.
+
+`test-units.mjs` bygger en syntetisk streckgubbe av nyckelposer och kör hela kedjan
+(`signals` → `findPhases` → `metrics`) på den. Det klipp som börjar med att spelaren tar emot
+bollen är regressionstestet: den gamla regeln lade faserna i fångsten, den nya i skottet.
 
 Skjutarm = den handled som når högst. Vinklar räknas med bildens aspect ratio, annars blir de fel
 i stående video.
@@ -125,6 +140,9 @@ och landade där – bedömningen av ett givet klipp är alltså oförändrad.
 - Riktvärdena gäller nu alla åldrar. För en tioåring är de för hårda. Kalibrera mot egna klipp
   innan du delar upp dem i band igen.
 - Fotställning i bredd syns inte från sidan. Säg inget om den.
+- Kravet på att handleden ska över huvudet gör att ett klipp där MediaPipe tappar den
+  skjutande handleden i sträckningen ger `E_NO_SHOT` i stället för fel faser. Det är
+  avsiktligt, men det betyder att dåligt spårade klipp nu oftare säger nej.
 - På Auto läses bara de första 8 sekunderna av klippet. Ett 8×-klipp som är längre än så kan
   ha skottet utanför fönstret – välj hastigheten manuellt då, för då sträcks fönstret ut lika
   mycket. Att först gissa och sedan läsa om klippet vore ett andra svep till.
