@@ -1,5 +1,6 @@
 // app.js – laddar klippet, kör MediaPipe Pose i webbläsaren, ritar resultatet.
-// Videon lämnar aldrig telefonen. Bara siffror skulle behöva skickas till en Worker senare.
+// Videon lämnar aldrig telefonen. Till Workern går bara siffror – och de bildrutor användaren
+// kryssat i, som beskurna stillbilder. Se coach.js.
 import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 import { pickSide, signals, findPhases, metrics, estimateSpeed, rescaleTime, postRelease, visibilityByMetric } from './analysis.js';
 import { prioritize, issueList, allClear, goodNote, labelOf, refOf, formatValue, METRIC_PHASE } from './rules.js';
@@ -405,38 +406,7 @@ function renderResult(data) {
   }
   buildDots(wrap);
 
-  // Att jobba på. Ordningen kommer alltid från rules.js. Den AI-formulerade texten läggs bara
-  // ovanpå de poster som har samma nyckel – merge() i coach.js gör inget annat.
-  const issues = merge(issueList(prio, lang, 5), coachResult(data));
-  $('goodnote').textContent = goodNote(prio, lang);
-  const ol = $('work');
-  ol.innerHTML = '';
-  if (!issues.length) {
-    const a = allClear(lang);
-    ol.innerHTML = `<div class="allclear"><h3>${esc(a.title)}</h3><p>${esc(a.why)}</p><p>${esc(a.drill)}</p></div>`;
-  } else {
-    issues.forEach((it, i) => {
-      const li = document.createElement('li');
-      const head = document.createElement('button');
-      head.type = 'button';
-      head.className = 'head';
-      head.setAttribute('aria-expanded', 'false');
-      head.innerHTML = `<span class="rank">${i + 1}</span><span class="label">${esc(it.title)}</span>${it.ai ? badge() : ''}<span class="plus" aria-hidden="true"></span>`;
-      const body = document.createElement('div');
-      body.className = 'body';
-      body.hidden = true;
-      body.innerHTML = `${it.what ? `<p>${esc(it.what)}</p>` : ''}<p>${esc(it.why)}</p>
-        <p class="drill"><strong>${esc(t('drill'))}:</strong> ${esc(it.drill)}</p>
-        <p class="pep">${esc(it.pep)}</p>`;
-      head.addEventListener('click', () => {
-        const on = head.getAttribute('aria-expanded') === 'false';
-        head.setAttribute('aria-expanded', String(on));
-        body.hidden = !on;
-      });
-      li.append(head, body);
-      ol.appendChild(li);
-    });
-  }
+  renderWork(data, lang);
 
   // Alla mätvärden
   $('metrics').innerHTML = prio.graded.map(g => `<li>
@@ -453,6 +423,44 @@ function renderResult(data) {
   renderCoach(data, lang);
   prepareShare(data);
   ensureCoach(data);
+}
+
+// Att jobba på. Ordningen kommer alltid från rules.js. Den AI-formulerade texten läggs bara
+// ovanpå de poster som har samma nyckel – merge() i coach.js gör inget annat.
+//
+// Egen funktion därför att den är det enda som ändras när workern svarar. Att rita om hela
+// resultatvyn då skulle stänga fasernas vinkelvyer och göra om delningsbilden i onödan.
+function renderWork(data, lang) {
+  const issues = merge(issueList(data.prio, lang, 5), coachResult(data));
+  $('goodnote').textContent = goodNote(data.prio, lang);
+  const ol = $('work');
+  ol.innerHTML = '';
+  if (!issues.length) {
+    const a = allClear(lang);
+    ol.innerHTML = `<div class="allclear"><h3>${esc(a.title)}</h3><p>${esc(a.why)}</p><p>${esc(a.drill)}</p></div>`;
+    return;
+  }
+  issues.forEach((it, i) => {
+    const li = document.createElement('li');
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'head';
+    head.setAttribute('aria-expanded', 'false');
+    head.innerHTML = `<span class="rank">${i + 1}</span><span class="label">${esc(it.title)}</span>${it.ai ? badge() : ''}<span class="plus" aria-hidden="true"></span>`;
+    const body = document.createElement('div');
+    body.className = 'body';
+    body.hidden = true;
+    body.innerHTML = `${it.what ? `<p>${esc(it.what)}</p>` : ''}<p>${esc(it.why)}</p>
+      <p class="drill"><strong>${esc(t('drill'))}:</strong> ${esc(it.drill)}</p>
+      <p class="pep">${esc(it.pep)}</p>`;
+    head.addEventListener('click', () => {
+      const on = head.getAttribute('aria-expanded') === 'false';
+      head.setAttribute('aria-expanded', String(on));
+      body.hidden = !on;
+    });
+    li.append(head, body);
+    ol.appendChild(li);
+  });
 }
 
 // De två meningarna som sammanfattar hur resultatet ska läsas. Egna funktioner därför att
@@ -514,7 +522,13 @@ async function ensureCoach(data) {
   } catch {
     job.status = 'failed';   // koden säger inget användaren kan göra något åt
   }
-  if (coach === job && last === data) renderResult(data);
+  if (coach === job && last === data) showCoach(data);
+}
+
+// Ritar om det som beror på svaret, och bara det.
+function showCoach(data) {
+  renderWork(data, getLang());
+  renderCoach(data, getLang());
 }
 
 function renderCoach(data, lang) {
@@ -547,7 +561,7 @@ function renderCoach(data, lang) {
 
 $('sendframes').addEventListener('change', e => {
   try { sessionStorage.setItem(FRAMES_KEY, e.currentTarget.checked ? '1' : '0'); } catch { /* privat läge */ }
-  if (last) renderResult(last);
+  if (last) { showCoach(last); ensureCoach(last); }
 });
 try { $('sendframes').checked = sessionStorage.getItem(FRAMES_KEY) === '1'; } catch { /* strunt samma */ }
 
