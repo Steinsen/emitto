@@ -33,6 +33,17 @@ export const refOf = key => REF[key];
 export const labelOf = (key, lang) => REF[key].label[lang];
 export const unitIn = (key, lang) => (typeof REF[key].unit === 'string' ? REF[key].unit : REF[key].unit[lang]);
 
+// Ett mätvärde med sin enhet och sina decimaler. Ligger här och inte i app.js därför att
+// antalet decimaler hör ihop med riktvärdet: ändras REF ska formateringen följa med i
+// samma fil. Används av både resultatvyn och det man delar.
+export function formatValue(key, value, lang) {
+  if (value == null) return '–';
+  const r = REF[key];
+  const dec = r.dec ?? (r.unit === 's' ? 2 : 0);
+  const unit = unitIn(key, lang);
+  return unit === '°' ? `${value.toFixed(dec)}${unit}` : `${value.toFixed(dec)} ${unit}`;
+}
+
 export function grade(key, value) {
   const r = REF[key];
   if (value == null || Number.isNaN(value)) return { status: 'na', severity: 0, ref: r };

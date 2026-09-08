@@ -19,10 +19,12 @@ tränare i loopen. Gränssnittet finns på svenska och engelska.
 |---|---|---|
 | `index.html` | UI, stil, designtokens, de tre vyerna | utseende, struktur |
 | `app.js` | laddar klipp, kör MediaPipe ruta för ruta, ritar faser och listor | prestanda, rendering |
+| `draw.js` | ritar en fas: bilden, skelettet och vinkelbågarna på en canvas | skelettet eller bågarna ska se annorlunda ut |
+| `share.js` | gör resultatet till en delningsbild (JPEG) eller en fristående sida (HTML) | det som delas ska innehålla något annat |
 | `analysis.js` | hittar faser och räknar mätvärden ur ledpunkter | fasdetektering är fel |
 | `rules.js` | riktvärden, prioritering, feedbacktexter på båda språken | gränser, texter, ordning |
 | `i18n.js` | gränssnittets strängar, språkval och språkdetektering | UI-texter, nytt språk |
-| `test-units.mjs` | kontroller som inte behöver klipp | hastighet, prioritering, språk |
+| `test-units.mjs` | kontroller som inte behöver klipp | hastighet, prioritering, språk, utsnitt |
 | `fixtures/` | ledpunkter ur ett riktigt klipp som JSON, för testerna. Publiceras inte | fasdetekteringen ändras |
 | `examples/` | färdiga klipp som kan analyseras utan eget klipp | nytt exempel läggs till i `EXAMPLES` i `app.js` |
 | `logo.svg`, `icon.svg`, `fonts/` | varumärke | aldrig utan anledning |
@@ -35,12 +37,17 @@ om basket. `app.js` vet inget om riktvärden – det frågar `rules.js`.
 Feedbacktexterna ligger i `rules.js`, inte i `i18n.js`, eftersom de hör ihop med gränsen de
 beskriver: ändrar du ett riktvärde ska texten bredvid ändras i samma fil.
 
+`draw.js` ligger mellan `analysis.js` och de två ställen som ritar faser: resultatvyn och
+delningsbilden. Ritade de var för sig skulle samma skott kunna se olika ut i appen och i det
+tränaren får skickat till sig.
+
 ## Kommandon
 
 ```
 npx serve .              # lokal server (file:// fungerar inte med ES-moduler)
 node test-units.mjs      # kontroller utan testklipp: hastighetsgissning, fasdetektering
-                         # (syntetisk streckgubbe + ledpunkter i fixtures/), prioritering, språk
+                         # (syntetisk streckgubbe + ledpunkter i fixtures/), prioritering,
+                         # språk, delningsbildens utsnitt
 node test.mjs            # kör analys + regler mot samples/*_lm.json, skriver faser och fokus
 npx wrangler deploy      # publicera
 npx wrangler dev --persist-to /tmp/emitto-dev   # enda sättet att testa _headers lokalt.
@@ -145,6 +152,32 @@ genomskinlig pixel – en gömd video slutar måla upp rutor.
 
 Resultatet ligger kvar i `last`, så språkbyte ritar om utan att analysera igen.
 
+## Dela resultatet (share.js)
+
+Två format, för två olika saker. **Bilden** (JPEG, 1080 px bred) är förstahandsvalet: den
+hamnar direkt i chatten och syns utan att någon behöver öppna en fil – de fyra faserna,
+listan och alla mätvärden mot riktvärdena. **Sidan** (en enda HTML-fil, ~40 kB) har hela
+rapporten med varför, övning och pepp, och är till för den som vill spara eller maila.
+
+Båda går ut genom `deliver()`: Web Share med fil om webbläsaren kan, annars nedladdning.
+Ingen av vägarna passerar en server. Bilderna kommer från rutor som redan är avlästa, och
+det är användaren som väljer att skicka dem – löftet gäller klippet, och klippet skickas
+aldrig.
+
+Två saker är inte godtyckliga:
+
+- **Bilden görs i förväg**, så snart resultatet ritats (`prepareShare`). Safari kräver att
+  `navigator.share` anropas i samma klick som användaren gjorde, och ritas bilden först
+  efter klicket hinner den kedjan brytas – då öppnas aldrig delningsrutan. Är bilden klar
+  blir klicket bara ett anrop. Språkbyte gör om den.
+- **Rutorna klipps runt spelaren** (`personCrop` i `draw.js`). Klippen är filmade på håll
+  för att hela kroppen ska synas; med fyra rutor bredvid varandra i en delningsbild blir
+  spelaren annars en streckgubbe i frimärksformat. Utsnittet utgår från ledpunkterna, så
+  hela kroppen är alltid med – `test-units.mjs` kontrollerar just det.
+
+Sidan bär inte med sig typsnitten: tre TTF-filer hade lagt en halv megabyte till en fil som
+ska kunna mailas. Färgerna och strukturen bär ändå.
+
 ## Prioritering (rules.js)
 
 `PRIORITY` är rörelsekedjan nedifrån och upp: knädjup → tid → knä vid släpp → bållutning →
@@ -175,6 +208,9 @@ och landade där – bedömningen av ett givet klipp är alltså oförändrad.
   HEVC (`hvc1`, 1920×1080 med rotationsflagga) och fungerar därför bara i Safari – exportera
   om dem. 20260906 ligger inte i `EXAMPLES` i `app.js` ännu, just därför. Klipp som webbläsaren inte kan avkoda ger nu ett tydligt fel (`E_VIDEO`)
   i stället för en laddning som snurrar för evigt, men felet kvarstår för besökaren.
+- Fasbilderna sparas 560 px höga (`PHASE_H`). Delningsbilden förstorar utsnittet ur dem
+  ~1,5 gånger, så den är lite mjuk. Höj `PHASE_H` bara om minnet i svepet tål det –
+  åtta sekunder ligger redan på ~4 MB.
 - Seek-loopen i `app.js` kan vara långsam på telefon. Sänk `SAMPLE_FPS` (15 → 10) före andra
   optimeringar. `delegate: 'GPU'` kan behöva bli `'CPU'` på vissa Android-enheter.
 
