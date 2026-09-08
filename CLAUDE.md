@@ -24,7 +24,7 @@ tränare i loopen. Gränssnittet finns på svenska och engelska.
 | `analysis.js` | hittar faser och räknar mätvärden ur ledpunkter | fasdetektering är fel |
 | `rules.js` | riktvärden, prioritering, feedbacktexter på båda språken | gränser, texter, ordning |
 | `i18n.js` | gränssnittets strängar, språkval och språkdetektering | UI-texter, nytt språk |
-| `test-units.mjs` | kontroller som inte behöver klipp | hastighet, prioritering, språk, utsnitt |
+| `test-units.mjs` | kontroller som inte behöver klipp | hastighet, prioritering, språk, utsnitt, vinkelbågar |
 | `fixtures/` | ledpunkter ur ett riktigt klipp som JSON, för testerna. Publiceras inte | fasdetekteringen ändras |
 | `examples/` | färdiga klipp som kan analyseras utan eget klipp | nytt exempel läggs till i `EXAMPLES` i `app.js` |
 | `logo.svg`, `icon.svg`, `fonts/` | varumärke | aldrig utan anledning |
@@ -41,13 +41,19 @@ beskriver: ändrar du ett riktvärde ska texten bredvid ändras i samma fil.
 delningsbilden. Ritade de var för sig skulle samma skott kunna se olika ut i appen och i det
 tränaren får skickat till sig.
 
+Vinkelbågens radie sätts av det kortaste benet i leden (`arcRadius`), inte av rutans bredd.
+Låret och vaden är ungefär en sjundedel av rutan breda, men överarmen i set point är hälften
+så lång – en fast radie lade bågen utanför både axel och handled, och den såg ut att höra till
+någon annan del av kroppen än den den mätte. Siffran läggs ut längs vinkelns bisektris, så den
+följer med bågen.
+
 ## Kommandon
 
 ```
 npx serve .              # lokal server (file:// fungerar inte med ES-moduler)
 node test-units.mjs      # kontroller utan testklipp: hastighetsgissning, fasdetektering
                          # (syntetisk streckgubbe + ledpunkter i fixtures/), prioritering,
-                         # språk, delningsbildens utsnitt
+                         # språk, delningsbildens utsnitt, vinkelbågarnas geometri
 node test.mjs            # kör analys + regler mot samples/*_lm.json, skriver faser och fokus
 npx wrangler deploy      # publicera
 npx wrangler dev --persist-to /tmp/emitto-dev   # enda sättet att testa _headers lokalt.
