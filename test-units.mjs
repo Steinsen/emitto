@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { L, signals, findPhases, metrics, pickSide, estimateSpeed } from './analysis.js';
 import { prioritize, issueList, formatValue } from './rules.js';
-import { personCrop, drawFrame, ARC } from './draw.js';
+import { personCrop, drawFrame, ARC, FULL } from './draw.js';
 
 let fail = 0;
 const ok = (name, cond, note = '') => {
@@ -301,6 +301,44 @@ ok('klipp: släpphöjden är över en kroppslängd', real.m.releaseHeight > 1, r
   const inWedge = span > 0 ? toLabel > 0 && toLabel < span : toLabel < 0 && toLabel > span;
   ok('bågar: etiketten ligger i vinkelns kil', inWedge,
     `${((toLabel / span) * 100).toFixed(0)} % in i kilen`);
+
+  // Vidvinkelklipp: filmat från läktaren är spelaren en sjättedel av bildhöjden, och då är
+  // överarmen ~14 px i den sparade rutan – kortare än radiens golv (dest.w/22). Ritas hela
+  // bildrutan hamnar bågen utanför armen igen, hur väl den än följer benen. Resultatvyn
+  // klipper därför runt spelaren precis som delningsbilden, och det är utsnittet som gör
+  // måtten rimliga. Testet visar båda: utan utsnitt faller det, med utsnitt håller det.
+  const wide = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5 }));
+  const put = (k, x, y) => { wide[k] = { x, y }; };
+  put(L.nose, .500, .420);
+  put(L.lSho, .500, .440); put(L.rSho, .500, .440);
+  put(L.lElb, .488, .462); put(L.rElb, .488, .462);   // armbåge ut från kroppen
+  put(L.lWri, .502, .448); put(L.rWri, .502, .448);   // handled tillbaka in: vikt arm
+  put(L.lHip, .508, .500); put(L.rHip, .508, .500);
+  put(L.lKnee, .498, .540); put(L.rKnee, .498, .540);
+  put(L.lAnk, .508, .580); put(L.rAnk, .508, .580);
+  put(L.lHeel, .508, .585); put(L.rHeel, .508, .585);
+
+  const frameAspect = 0.66, cardBox = 3 / 4;
+  const wideDest = { x: 0, y: 0, w: Math.round(560 * cardBox), h: 560 };
+  const fitsWith = crop => {
+    const { ctx, calls } = stub();
+    drawFrame(ctx, { width: 400, height: 606 }, wideDest, wide, 'left',
+      [{ key: 'elbowSet', status: 'good', value: 70 }], crop);
+    const [a, b, c] = ARC.elbowSet({ sho: L.lSho, elb: L.lElb, wri: L.lWri });
+    const at = k => ({
+      x: ((wide[k].x - crop.x) / crop.w) * wideDest.w,
+      y: ((wide[k].y - crop.y) / crop.h) * wideDest.h,
+    });
+    const d = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+    const limb = Math.min(d(at(a), at(b)), d(at(b), at(c)));
+    return { limb, r: calls.arc[0].r };
+  };
+  const whole = fitsWith(FULL);
+  const cropped = fitsWith(personCrop(wide, frameAspect, cardBox));
+  ok('bågar: hela bildrutan räcker inte på ett vidvinkelklipp', whole.r > whole.limb,
+    `arm ${whole.limb.toFixed(0)} px, radie ${whole.r.toFixed(0)} px`);
+  ok('bågar: med utsnitt runt spelaren ligger bågen i armen', cropped.r <= cropped.limb,
+    `arm ${cropped.limb.toFixed(0)} px, radie ${cropped.r.toFixed(0)} px`);
 }
 
 // Formateringen följer riktvärdet: sekunder får två decimaler, grader inga.
