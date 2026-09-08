@@ -223,7 +223,9 @@ function backOnFloor(sig, from, until, pick, lift) {
 }
 
 export function postRelease(sig, ph) {
-  const out = { landing_ms: null, driftLanding: null, trunkAfterRelease: null, landingSplit_ms: null };
+  // `landing` är rutans index, som faserna i findPhases – appen behöver den för att kunna visa
+  // och skicka landningsbilden. Den följer inte med ut ur appen; det gör bara måtten.
+  const out = { landing: -1, landing_ms: null, driftLanding: null, trunkAfterRelease: null, landingSplit_ms: null };
   const { ankleBase, noseBase, bodyPx, fps } = floorLevel(sig);
   const re = sig[ph.release];
 
@@ -248,6 +250,7 @@ export function postRelease(sig, ph) {
   const land = backOnFloor(sig, start, until, f => f.ankleY, lift);
   if (land < 0) return out;                          // klippet tar slut medan spelaren är i luften
 
+  out.landing = land;
   out.landing_ms = Math.round((sig[land].t - sig[ph.takeoff].t) * 1000);
   out.driftLanding = (dir * (sig[land].hipX - sig[ph.takeoff].hipX)) / bodyPx;
 
