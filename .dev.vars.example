@@ -1,0 +1,8 @@
+# Kopiera till .dev.vars för lokal körning:
+#   cp .dev.vars.example .dev.vars
+#   npx wrangler dev --persist-to /tmp/emitto-dev
+#
+# .dev.vars är gitignorad och laddas bara av wrangler dev. I produktion är nyckeln en secret:
+#   npx wrangler secret put ANTHROPIC_API_KEY
+ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=claude-sonnet-5
