@@ -5,6 +5,11 @@ forskningens riktvärden och en kort prioriterad lista över vad som är värt a
 analys körs i webbläsaren (MediaPipe Pose via WASM) – videon lämnar aldrig telefonen.
 Gränssnittet finns på svenska och engelska och väljer språk efter webbläsaren.
 
+Texten i listan formuleras av en språkmodell via `/api/coach` i samma Worker, utifrån de
+mätvärden som redan räknats fram på enheten. Ordningen i listan kommer alltid från `rules.js`
+och kan inte ändras av modellen. Går anropet inte igenom står `rules.js` egna texter kvar –
+appen fungerar helt utan det.
+
 ## Så används den
 Välj ett klipp. Analysen startar direkt. Är klippet filmat i slow motion kan du välja
 hastigheten innan, eller låta Auto gissa den ur hoppets fria fall – resultatsidan visar
@@ -26,8 +31,12 @@ av rutor som redan är avlästa – klippet laddas fortfarande aldrig upp.
 - `share.js` – delningsbild (JPEG) och fristående rapport (HTML)
 - `analysis.js` – hittar faserna (lägsta läge, set point, släpp, frånskjut, följning) och räknar mätvärden
 - `rules.js` – riktvärden, prioriteringslogik, feedbacktexter på båda språken. **Det är här du justerar.**
+- `coach.js` – bygger anropet till `/api/coach` och lägger svaret ovanpå listan
+- `worker/index.js` – `/api/coach`: validering, anropet till modellen, kontroll av svaret
+- `worker/prompt.js` – systemprompten på båda språken, med mätdefinitioner och källor
 - `i18n.js` – gränssnittets strängar och språkval
 - `test-units.mjs` – kontroller utan testklipp: `node test-units.mjs`
+- `test.mjs` – analys + regler mot `samples/*_lm.json`: `node test.mjs`
 - `examples/` – färdiga klipp som kan analyseras direkt från startsidan
 
 ## Köra lokalt
@@ -69,9 +78,18 @@ aldrig hinner svara på en request.
 ### CSP:n
 `connect-src` i `_headers` är den tekniska motsvarigheten till löftet att videon aldrig lämnar
 enheten: sidan får bara prata med jsDelivr (MediaPipes WASM) och storage.googleapis.com
-(pose-modellen). Klippet läses som `blob:` och kan inte skickas någonstans. När Workern för
-feedbacktexterna kommer ligger den på samma origin som sidan, så `'self'` täcker den redan –
-CSP:n behöver inte vidgas, och det är fortfarande bara siffror som skickas.
+(pose-modellen). Klippet läses som `blob:` och kan inte skickas någonstans. Workern för
+feedbacktexterna ligger på samma origin som sidan, så `'self'` täcker den – CSP:n behövde inte
+vidgas. Dit går bara siffror, och de bildrutor användaren kryssat i: några beskurna stillbilder,
+aldrig klippet.
+
+### Nyckeln till modellen
+```
+npx wrangler secret put ANTHROPIC_API_KEY     # produktion
+cp .dev.vars.example .dev.vars                # lokalt, gitignorad
+```
+Modellen sätts med `ANTHROPIC_MODEL` i `wrangler.toml` (default `claude-sonnet-5`). Utan nyckel
+svarar `/api/coach` med `E_COACH_CONFIG` och appen visar `rules.js` texter, som vanligt.
 
 ## Hur prioriteringen fungerar
 Mätvärdena graderas mot ett intervall och en tolerans (`rules.js` → `REF`). Ordningen i `PRIORITY`
@@ -93,8 +111,7 @@ påhittade fel.
   klarar men Chrome och Firefox ofta inte – då säger appen till i stället för att fastna.
 
 ## Nästa steg
-1. Worker som får siffrorna och formulerar feedback med en LLM (bara ettan i prioriteringen).
-   Lägg `main = "worker.js"` i `wrangler.toml` – samma projekt, samma origin, ingen CORS.
+1. Turnstile framför `/api/coach`. Just nu står ett tak per IP ensamt (rate-limit-binding).
 2. D1: spara analyser per spelare → historik och "timing sitter, nu går vi vidare".
 3. Vinkelkontroll: varna om kameran inte står i sidovy.
 

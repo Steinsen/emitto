@@ -7,8 +7,10 @@
 
 import { readFileSync } from 'node:fs';
 import { L, signals, findPhases, metrics, pickSide, estimateSpeed, postRelease, visibilityByMetric } from './analysis.js';
-import { prioritize, issueList, formatValue } from './rules.js';
+import { prioritize, issueList, formatValue, metricSpec, METRIC_KEYS } from './rules.js';
 import { personCrop, drawFrame, ARC, FULL } from './draw.js';
+import { buildPayload, merge, requestCoach } from './coach.js';
+import { checkShape, validate } from './worker/index.js';
 
 let fail = 0;
 const ok = (name, cond, note = '') => {
@@ -190,9 +192,21 @@ function fixture(name) {
     f.leder.forEach((idx, k) => { lm[idx] = { x: r.lm[k][0], y: r.lm[k][1] }; });
     return { t: r.t, lm };
   });
-  const sig = signals(frames, pickSide(frames, 'auto'), f.aspect);
+  const side = pickSide(frames, 'auto');
+  const sig = signals(frames, side, f.aspect);
   const ph = findPhases(sig);
-  return { frames, aspect: f.aspect, sig, ph, m: metrics(sig, ph), at: k => sig[ph[k]].t };
+  return { frames, side, aspect: f.aspect, sig, ph, m: metrics(sig, ph), at: k => sig[ph[k]].t };
+}
+
+// Samma resultatobjekt som app.js lägger i `last`, byggt av fixturen. Det är det coach.js får.
+function resultOf(fx, speed = { factor: 1, source: 'jump' }) {
+  const times = {};
+  for (const k of ['lowest', 'set', 'release', 'takeoff', 'apex', 'follow']) {
+    times[k] = fx.ph[k] >= 0 ? fx.sig[fx.ph[k]].t : null;
+  }
+  return { frames: fx.frames, side: fx.side, aspect: fx.aspect, shots: [], m: fx.m, ph: fx.ph, speed,
+    prio: prioritize(fx.m), times, pr: postRelease(fx.sig, fx.ph),
+    vis: visibilityByMetric(fx.frames, fx.ph, fx.side) };
 }
 
 const real = fixture('catch-then-shot_lm');
@@ -408,11 +422,123 @@ const leo = { kneeMin: 100, tLowToRelease: 0.6, kneeRelease: 150, trunkLowest: 2
 const pl = prioritize(leo);
 ok('Leo: inget att anmärka', pl.issues.length === 0, pl.issues.map(i => i.key).join(','));
 
+// Facit ur CLAUDE.md, som en spärr: den AI-formulerade texten får byta ord, aldrig lista.
+// Går de här raderna sönder har prioriteringen ändrats, och då stämmer inte längre det som
+// står om Leo och Jalen i CLAUDE.md heller.
+ok('Jalen: listan är tempot, i den ordningen',
+  issueList(pj, 'sv').map(i => i.key).join(',') === 'tLowToRelease',
+  issueList(pj, 'sv').map(i => i.key).join(','));
+ok('Jalen: rubriken är rules.js egen', issueList(pj, 'sv')[0].title === 'Släpp bollen på vägen upp',
+  issueList(pj, 'sv')[0].title);
+ok('Leo: listan är tom', issueList(pl, 'sv').map(i => i.key).join(',') === '',
+  issueList(pl, 'sv').map(i => i.key).join(','));
+
 // Listan fylls aldrig ut med påhittade fel.
 ok('tom lista när allt är inom ramarna', issueList(pl, 'sv').length === 0);
 ok('listan är aldrig längre än fem', issueList(prioritize({
   kneeMin: 130, tLowToRelease: 1.6, kneeRelease: 190, trunkLowest: 60, elbowSet: 140, releaseHeight: 0.7,
 }), 'sv').length === 5);
+
+// ---------------------------------------------------------------- coach.js och workern
+//
+// Inget nätverk: fetch mockas. Det som testas är att rätt saker skickas, att fallbacken är
+// intakt, och att workern vägrar ett svar som inte följer prioriteringen. Det sista är hela
+// poängen med kontrollen – prioriteringen ska vara deterministisk även om modellen inte är det.
+{
+  const data = resultOf(real);
+  const payload = buildPayload({ lang: 'sv', age: 15, data });
+
+  ok('payload: inga bilder skickas som standard', payload.frames.length === 0);
+  ok('payload: mätvärdena har rules.js egna nycklar',
+    payload.metrics.every(m => METRIC_KEYS.includes(m.key)), payload.metrics.map(m => m.key).join(','));
+  ok('payload: riktvärden och enheter kommer från rules.js', payload.metrics.every(m => {
+    const s = metricSpec(m.key);
+    return m.ref[0] === s.ok[0] && m.ref[1] === s.ok[1] && m.unit === s.unit;
+  }));
+  ok('payload: listan skickas i prioriteringens ordning',
+    payload.issues.map(i => i.key).join(',') === issueList(data.prio, 'sv', 5).map(i => i.key).join(','),
+    payload.issues.map(i => i.key).join(','));
+  ok('payload: efter släppet skickas utan riktvärde och utan bedömning',
+    Object.keys(payload.postRelease).join(',') === 'landing_ms,driftLanding,trunkAfterRelease,landingSplit_ms',
+    Object.keys(payload.postRelease).join(','));
+  ok('payload: 15 rutor/s märks som osäkert mätt',
+    payload.metrics.every(m => m.confidence === 'low'), `fps ${payload.fps}`);
+
+  // Slow motion ger fler rutor per verklig sekund, inte färre – då är mätningen inte osäker.
+  const fast = { ...data, ph: { ...data.ph, fps: 60 } };
+  ok('payload: 60 rutor/s märks inte som osäkert',
+    buildPayload({ lang: 'sv', data: fast }).metrics.every(m => !m.confidence));
+
+  // ...men en led som MediaPipe knappt såg gör sitt eget mätvärde osäkert ändå.
+  const dim = { ...fast, vis: { ...fast.vis, elbowSet: 0.2 } };
+  const dimmed = buildPayload({ lang: 'sv', data: dim }).metrics;
+  ok('payload: en dåligt spårad led märker bara sitt eget mätvärde',
+    dimmed.find(m => m.key === 'elbowSet').confidence === 'low'
+    && dimmed.filter(m => m.key !== 'elbowSet').every(m => !m.confidence));
+
+  // Workerns kontroll av svaret.
+  const keys = payload.issues.map(i => i.key);
+  const answer = over => ({
+    summary: 's', strengths: [],
+    priority: { key: keys[0], title: 't', what: 'w', why: 'y', drill: 'd', encouragement: 'e' },
+    secondary: keys.slice(1).map(k => ({ key: k, text: 'x' })),
+    observations: [], uncertainties: [], after: null, disagreement: null, ...over,
+  });
+  ok('workern: ett svar i prioriteringens ordning släpps igenom', checkShape(answer(), payload) === null,
+    checkShape(answer(), payload) || '');
+  ok('workern: fel nyckel i priority kastas',
+    checkShape(answer({ priority: { ...answer().priority, key: 'elbowSet' } }), payload) !== null);
+  ok('workern: omkastad secondary kastas',
+    checkShape(answer({ secondary: [...answer().secondary].reverse() }), payload) !== null);
+  ok('workern: en extra punkt i secondary kastas',
+    checkShape(answer({ secondary: [...answer().secondary, { key: 'elbowSet', text: 'x' }] }), payload) !== null);
+  ok('workern: observationer utan bilder kastas',
+    checkShape(answer({ observations: ['ser bra ut'] }), payload) !== null);
+  ok('workern: observationer med bilder släpps igenom',
+    checkShape(answer({ observations: ['ser bra ut'] }), { ...payload, frames: [{ phase: 'release' }] }) === null);
+  ok('workern: priority måste vara null när listan är tom',
+    checkShape(answer(), { ...payload, issues: [] }) !== null
+    && checkShape(answer({ priority: null, secondary: [] }), { ...payload, issues: [] }) === null);
+
+  // Valideringen av det som kommer in. Adressen är öppen; allt som inte ser ut som en analys
+  // ska bort innan något skickas vidare och kostar pengar.
+  ok('workern: en riktig payload valideras', validate(payload) === null, validate(payload) || '');
+  ok('workern: okänt språk avvisas', validate({ ...payload, lang: 'de' }) === 'lang');
+  ok('workern: påhittad mätvärdesnyckel avvisas',
+    validate({ ...payload, metrics: [{ ...payload.metrics[0], key: 'vingbredd' }] }) === 'metrics.key');
+  ok('workern: för många bilder avvisas',
+    validate({ ...payload, frames: Array.from({ length: 6 }, () => ({ phase: 'set', jpeg_base64: 'AA==' })) }) === 'frames');
+  ok('workern: en för stor bild avvisas',
+    validate({ ...payload, frames: [{ phase: 'set', jpeg_base64: 'A'.repeat(200 * 1024 + 1) }] }) === 'frames.jpeg_base64');
+  ok('workern: en bild som inte är base64 avvisas',
+    validate({ ...payload, frames: [{ phase: 'set', jpeg_base64: '<script>' }] }) === 'frames.jpeg_base64');
+
+  // Fallbacken: utan svar står rules.js texter kvar, ord för ord.
+  const issues = issueList(data.prio, 'sv', 5);
+  const fallback = merge(issues, null);
+  ok('fallback: rules.js texter står kvar när svaret uteblir',
+    fallback.every((it, i) => it.title === issues[i].title && it.why === issues[i].why && it.ai === false));
+  const merged = merge(issues, answer());
+  ok('svar: modellens ord läggs på rätt post',
+    merged[0].title === 't' && merged[0].ai === true && merged[0].key === issues[0].key);
+  const wrong = merge(issues, answer({ priority: { ...answer().priority, key: 'elbowSet' } }));
+  ok('svar: fel nyckel ger rules.js text, aldrig modellens',
+    wrong[0].title === issues[0].title && wrong[0].ai === false);
+
+  // Anropet. fetch mockas – testerna rör aldrig nätet.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ summary: 'ok' }) });
+  ok('anrop: ett svar kommer tillbaka som det är', (await requestCoach(payload)).summary === 'ok');
+  globalThis.fetch = async () => ({ ok: false, status: 502, json: async () => ({ error: 'E_COACH_UPSTREAM' }) });
+  let code = null;
+  try { await requestCoach(payload); } catch (e) { code = e.message; }
+  ok('anrop: workerns felkod når klienten', code === 'E_COACH_UPSTREAM', code || 'inget fel');
+  globalThis.fetch = async () => { throw new TypeError('offline'); };
+  code = null;
+  try { await requestCoach(payload); } catch (e) { code = e.message; }
+  ok('anrop: offline ger en kod, inte ett kraschat löfte', code === 'E_COACH', code || 'inget fel');
+  globalThis.fetch = realFetch;
+}
 
 // ---------------------------------------------------------------- språk
 const src = readFileSync(new URL('./i18n.js', import.meta.url), 'utf8');
@@ -424,6 +550,29 @@ const sv = keysOf('sv'), en = keysOf('en');
 ok('svenska och engelska har samma nycklar',
   sv.length === en.length && sv.every(k => en.includes(k)),
   `sv ${sv.length}, en ${en.length}, saknas i en: ${sv.filter(k => !en.includes(k)).join(',') || 'inga'}`);
+
+// ---------------------------------------------------------------- gränssnittets kopplingar
+//
+// app.js hämtar element med $('id') och index.html märker texter med data-i18n. Går de isär
+// syns det inte i någon annan kontroll: appen kastar först när användaren kommit till
+// resultatvyn, och en saknad språknyckel blir bara ordet "undefined" i gränssnittet.
+{
+  const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('./app.js', import.meta.url), 'utf8');
+  const ids = new Set([...html.matchAll(/\bid="([\w-]+)"/g)].map(m => m[1]));
+  const wanted = [...new Set([...app.matchAll(/\$\('([\w-]+)'\)/g)].map(m => m[1]))];
+  const missing = wanted.filter(id => !ids.has(id));
+  ok('alla element app.js hämtar finns i index.html', missing.length === 0, missing.join(',') || 'inga saknas');
+
+  const used = [...new Set([...html.matchAll(/data-i18n="(\w+)"/g)].map(m => m[1]))];
+  const unknown = used.filter(k => !sv.includes(k));
+  ok('alla data-i18n-nycklar finns i i18n.js', unknown.length === 0, unknown.join(',') || 'inga saknas');
+
+  const share = readFileSync(new URL('./share.js', import.meta.url), 'utf8');
+  const called = [...new Set([...(app + share).matchAll(/\bt\('(\w+)'\)/g)].map(m => m[1]))];
+  const gone = called.filter(k => !sv.includes(k));
+  ok('alla t()-nycklar i koden finns i i18n.js', gone.length === 0, gone.join(',') || 'inga saknas');
+}
 
 console.log(fail ? `\n${fail} fel` : '\nAllt grönt');
 process.exit(fail ? 1 : 0);

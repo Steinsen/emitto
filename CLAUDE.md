@@ -11,7 +11,13 @@ tränare i loopen. Gränssnittet finns på svenska och engelska.
 - All analys körs klientsidan med MediaPipe Pose (Tasks Vision, WASM). **Videon lämnar aldrig
   enheten** – det är ett produktlöfte, bryt det inte utan att fråga.
 - Deploy: Cloudflare Workers med static assets (`npx wrangler deploy`), repo-roten som
-  assets-katalog. Framtida backend = `main` i samma Worker – bara siffror, aldrig video.
+  assets-katalog. Workern (`main = worker/index.js`) svarar bara på `/api/*`; allt annat
+  serveras som statiska filer och fungerar även om API:t ligger nere.
+- **Mätningen och prioriteringen är deterministisk och körs på enheten.** Det enda som lämnar
+  enheten är siffrorna, och – bara om användaren kryssar i det – några beskurna stillbilder ur
+  rutor som redan lästs av. Aldrig klippet. En språkmodell **formulerar** analysen; den väljer
+  aldrig vad som ska stå överst. Blir anropet av med det står `rules.js` egna texter kvar, och
+  det är inte ett fel utan normalläget.
 
 ## Filer
 
@@ -23,16 +29,23 @@ tränare i loopen. Gränssnittet finns på svenska och engelska.
 | `share.js` | gör resultatet till en delningsbild (JPEG) eller en fristående sida (HTML) | det som delas ska innehålla något annat |
 | `analysis.js` | hittar faser och räknar mätvärden ur ledpunkter | fasdetektering är fel |
 | `rules.js` | riktvärden, prioritering, feedbacktexter på båda språken | gränser, texter, ordning |
+| `coach.js` | bygger anropet till `/api/coach` och lägger svaret ovanpå listan | vad som skickas, hur svaret används |
+| `worker/index.js` | `/api/coach`: validering, anropet uppåt, kontroll av svaret | API:t ändras |
+| `worker/prompt.js` | systemprompten på båda språken, med mätdefinitioner och källor | modellen skriver fel sorts text |
 | `i18n.js` | gränssnittets strängar, språkval och språkdetektering | UI-texter, nytt språk |
-| `test-units.mjs` | kontroller som inte behöver klipp | hastighet, prioritering, språk, utsnitt, vinkelbågar |
+| `test-units.mjs` | kontroller som inte behöver klipp | hastighet, prioritering, språk, utsnitt, vinkelbågar, payload |
+| `test.mjs` | kör analys + regler mot `samples/*_lm.json` och skriver ut resultatet | facit ska kontrolleras |
 | `fixtures/` | ledpunkter ur ett riktigt klipp som JSON, för testerna. Publiceras inte | fasdetekteringen ändras |
 | `examples/` | färdiga klipp som kan analyseras utan eget klipp | nytt exempel läggs till i `EXAMPLES` i `app.js` |
 | `logo.svg`, `icon.svg`, `fonts/` | varumärke | aldrig utan anledning |
-| `wrangler.toml`, `_headers`, `.assetsignore` | deploy: projekt, headers/CSP, vad som inte publiceras | deployen ändras |
+| `wrangler.toml`, `_headers`, `.assetsignore`, `.dev.vars.example` | deploy: projekt, headers/CSP, vad som inte publiceras, nycklar lokalt | deployen ändras |
 
 Håll isär lagren: `analysis.js` vet inget om texter eller riktvärden och kastar fel som koder
 (`E_NO_SHOT`), aldrig som färdig mening. `rules.js` vet inget om landmarks. `i18n.js` vet inget
-om basket. `app.js` vet inget om riktvärden – det frågar `rules.js`.
+om basket. `app.js` vet inget om riktvärden – det frågar `rules.js`. `coach.js` vet inget om
+ledpunkter och inget om gränssnittet: det bygger anropet av det `rules.js` och `analysis.js`
+redan räknat fram, och lämnar tillbaka listposter. Det importerar med flit inte `i18n.js` –
+den läser `navigator` redan vid import, och då går modulen inte att testa i node.
 
 Feedbacktexterna ligger i `rules.js`, inte i `i18n.js`, eftersom de hör ihop med gränsen de
 beskriver: ändrar du ett riktvärde ska texten bredvid ändras i samma fil.
@@ -54,10 +67,14 @@ npx serve .              # lokal server (file:// fungerar inte med ES-moduler)
 node test-units.mjs      # kontroller utan testklipp: hastighetsgissning, fasdetektering
                          # (syntetisk streckgubbe + ledpunkter i fixtures/), prioritering,
                          # språk, delningsbildens utsnitt, vinkelbågarnas geometri
-node test.mjs            # kör analys + regler mot samples/*_lm.json, skriver faser och fokus
+node test.mjs            # kör analys + regler mot samples/*_lm.json, skriver faser, mätvärden,
+                         # måtten efter släppet och fokus. Kör före och efter en ändring i
+                         # analysis.js eller rules.js och jämför utskrifterna.
 npx wrangler deploy      # publicera
-npx wrangler dev --persist-to /tmp/emitto-dev   # enda sättet att testa _headers lokalt.
-                                                # utan --persist-to startar servern om i loop.
+npx wrangler secret put ANTHROPIC_API_KEY       # nyckeln till modellen, en gång
+npx wrangler dev --persist-to /tmp/emitto-dev   # enda sättet att testa _headers och /api/coach
+                                                # lokalt. Utan --persist-to startar servern om
+                                                # i loop. Nyckeln läses ur .dev.vars.
 ```
 
 ## Testdata och facit
@@ -198,11 +215,58 @@ ska kunna mailas. Färgerna och strukturen bär ändå.
 armbåge → släpphöjd. Första avvikelsen vinner, om inte en senare avviker mer än dubbelt så
 mycket – då lyfts den först. `issueList` ger max 5 och fyller aldrig ut listan med påhittade
 fel: finns två avvikelser blir listan två lång. Prioriteringen är deterministisk och ska förbli
-det – en LLM får formulera, aldrig välja.
+det – en LLM får formulera, aldrig välja. Det är inte bara en instruktion i prompten:
+`worker/index.js` kastar svaret om `priority.key` inte är `issues[0].key` eller om `secondary`
+inte följer resten i ordning, och `merge()` i `coach.js` vägrar lägga modellens ord på en post
+med annan nyckel. Tycker modellen att listan är fel får den säga det i `disagreement`, som
+visas nedtonat.
 
 Åldersband och val av skjuthand är borttagna ur gränssnittet. Skjutarmen gissas av `pickSide`
 (handleden som når högst). Riktvärdena är de tidigare vuxenvärdena, eftersom 14 år var förvalt
 och landade där – bedömningen av ett givet klipp är alltså oförändrad.
+
+## Den AI-formulerade texten (coach.js, worker/)
+
+Riktvärdestexterna i `rules.js` är korrekta men statiska: samma mening till alla, ingen koppling
+mellan avvikelserna, inget om det `analysis.js` inte kan mäta. Ovanpå dem ligger ett lager som
+låter en språkmodell **formulera** samma analys – knyta ihop det som hänger ihop, motivera med
+forskningsstöd, och säga något om det som syns i bilderna.
+
+Kedjan: `app.js` ritar resultatet med `rules.js` texter → `coach.js` bygger en payload av det som
+redan är uträknat → `POST /api/coach` → `worker/index.js` validerar, frågar modellen med
+`worker/prompt.js` som systemprompt och **kontrollerar svaret mot listan** → `merge()` lägger
+orden på rätt post och vyn ritas om, märkt "AI-formulerad".
+
+Vad modellen får: skriva sammanhängande text, knyta ihop avvikelser, motivera med källor, föreslå
+övning, anpassa tonen efter ålder, och skriva observationer ur bilderna. Vad den inte får: välja
+eller ordna om listan, uppskatta siffror ur bilderna, ändra bedömningen inom/utanför riktvärdet,
+eller hitta på fel som inte finns i listan.
+
+**Undantaget är det som händer efter släppet.** `rules.js` täcker rörelsekedjan fram till
+släppet; bakåtlutning, framåtdrift och landning finns inte i `PRIORITY` alls. `postRelease()` i
+`analysis.js` mäter fyra tal (`landing_ms`, `driftLanding`, `trunkAfterRelease`,
+`landingSplit_ms`), de skickas som `postRelease` utan `ref` och utan `status`, och modellen får
+skriva högst en punkt om dem i fältet `after` – visad som en egen ruta efter listan, aldrig som
+en rad i den. Trösklarna för när det är värt att nämna ligger i `worker/prompt.js`, **inte** i
+`rules.js`: de är gissade startvärden som ingen mätt mot egna klipp. Flytta dem inte förrän de
+är kalibrerade – i `rules.js` skulle de börja se ut som riktvärden i appens mening.
+
+Konfidens räknas i `coach.js`, inte i `analysis.js`. Under 50 avlästa rutor per verklig sekund
+märks mätvärdena `confidence: 'low'`, liksom mätvärden vars leder MediaPipe såg dåligt
+(`visibilityByMetric`). Observera riktningen: slow motion ger *fler* rutor per verklig sekund,
+inte färre – `rescaleTime` delar tiden med faktorn, så 15 rutor/s i ett 4×-klipp är 60 i verklig
+tid. Vid normal fart är alltså allt osäkert mätt, och det ska modellen säga rakt ut.
+
+Bildrutorna är frivilliga och av som standard (kryssruta i resultatvyn, ihågkommen i sessionen).
+De är beskurna stillbilder ur rutor som redan lästs av, via samma `personCrop` som resultatvyn,
+högst fem stycken, högst 480 px. Klippet lämnar aldrig enheten, med eller utan kryss.
+
+Åldern är ett frivilligt tal i startvyn. Den styr bara ordvalen i den AI-formulerade texten –
+aldrig riktvärdena, som gäller alla åldrar.
+
+**Fallbacken är normalläget, inte ett undantag.** Går anropet inte igenom – offline, saknad
+nyckel, timeout, eller ett svar som inte följer listan – står `rules.js` texter kvar och det enda
+som syns är en nedtonad rad. Appen ska gå att använda helt utan Workern.
 
 ## Kända svagheter
 
@@ -229,6 +293,14 @@ och landade där – bedömningen av ett givet klipp är alltså oförändrad.
   sekunder ligger redan på ~4 MB. Billigare vore att klippa redan i svepet, där videon
   fortfarande finns i full upplösning: samma bytes, mer spelare. Det kräver att utsnittet
   sparas per ruta, eftersom `drawFrame` behöver veta vilket utsnitt bilden redan har.
+- Modellens `observations` är just observationer ur fyra–fem stillbilder, inte mätvärden. Att
+  "följningen hålls kvar" är en bild av en tiondels sekund, inte en mätning över tid – texten
+  ska säga "i bilden ser det ut som", och gör den inte det är det prompten som ska ändras.
+- Trösklarna i `worker/prompt.js` för när drift och landning är värda att nämna är gissade, inte
+  mätta. De första klippen med tydlig framåtdrift bör jämföras mot dem innan de flyttas någonstans.
+- Vid 15 rutor/s får varje mätvärde `confidence: 'low'`. Det är ärligt men trubbigt: en vinkel i
+  lägsta läget är inte lika känslig för bildfrekvensen som tiden mellan två faser. Dela upp det
+  när det finns klipp i 60 bilder/s att jämföra med.
 - Seek-loopen i `app.js` kan vara långsam på telefon. Sänk `SAMPLE_FPS` (15 → 10) före andra
   optimeringar. `delegate: 'GPU'` kan behöva bli `'CPU'` på vissa Android-enheter.
 
@@ -242,7 +314,9 @@ riktvärdena – aldrig en rad fel utan att först säga vad som är bra.
 
 ## Att inte göra
 
-- Ingen backend, inget konto, ingen lagring i MVP:n. Historik och trender är steg två.
+- Backend finns nu, men bara för texten: `/api/coach` tar emot siffror och – efter kryss i en
+  ruta – några beskurna stillbilder. Aldrig video, aldrig ledpunktsströmmar, ingen lagring,
+  inget konto, inga loggar om spelaren. Historik och trender är fortfarande steg två.
 - Inga ramverk eller byggsteg. Om det kliar: fråga först.
 - Ändra inte riktvärden för att få ett visst klipp att "passa". Ändra bara med stöd i klipp
   eller källor, och skriv varför i en kommentar i `rules.js`.
