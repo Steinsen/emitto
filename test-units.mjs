@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { L, signals, findPhases, metrics, pickSide, estimateSpeed } from './analysis.js';
 import { prioritize, issueList, formatValue } from './rules.js';
-import { personCrop } from './draw.js';
+import { personCrop, drawFrame, ARC } from './draw.js';
 
 let fail = 0;
 const ok = (name, cond, note = '') => {
@@ -240,6 +240,67 @@ ok('klipp: släpphöjden är över en kroppslängd', real.m.releaseHeight > 1, r
   ok('utsnitt: hela spelaren är med i varje fas', inside);
   ok('utsnitt: håller sig innanför bilden', framed);
   ok('utsnitt: rutans proportioner stämmer', shape);
+}
+
+// ---------------------------------------------------------------- vinkelbågar (draw.js)
+//
+// Bågen ska ligga i leden den mäter, alltså innanför de två benen som möts där. Med en fast
+// radie gjorde den inte det: överarmen är ~29 px i en fasruta som är 315 bred, och radien var
+// 45. Bågen sträckte sig då förbi både axel och handled och såg ut att höra till någon annan
+// del av kroppen än armbågen den mätte. Vi ritar därför med en attrapp-canvas och kontrollerar
+// geometrin i stället för att lita på att den ser rätt ut.
+{
+  const stub = () => {
+    const calls = { arc: [], rect: [] };
+    const ctx = {
+      save() {}, restore() {}, beginPath() {}, clip() {}, stroke() {}, fill() {},
+      drawImage() {}, moveTo() {}, lineTo() {}, fillText() {},
+      rect(x, y, w, h) { calls.rect.push({ x, y, w, h }); },
+      arc(x, y, r) { calls.arc.push({ x, y, r }); },
+      measureText(s) { return { width: s.length * 10 }; },
+    };
+    return { ctx, calls };
+  };
+  const img = { width: 315, height: 560 };
+  const dest = { x: 0, y: 0, w: 315, h: 560 };
+  const side = pickSide(real.frames, 'auto');
+  const j = side === 'right'
+    ? { sho: L.rSho, elb: L.rElb, wri: L.rWri, hip: L.rHip, knee: L.rKnee, ank: L.rAnk }
+    : { sho: L.lSho, elb: L.lElb, wri: L.lWri, hip: L.lHip, knee: L.lKnee, ank: L.lAnk };
+
+  let insideLimbs = true, visible = true, worst = Infinity;
+  for (const [phase, key] of [['set', 'elbowSet'], ['lowest', 'kneeMin'], ['release', 'kneeRelease']]) {
+    const lm = real.frames[real.ph[phase]].lm;
+    const { ctx, calls } = stub();
+    drawFrame(ctx, img, dest, lm, side, [{ key, status: 'good', value: 90 }]);
+    const [a, b, c] = ARC[key](j);
+    const px = k => ({ x: lm[k].x * dest.w, y: lm[k].y * dest.h });
+    const d = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+    const limb = Math.min(d(px(a), px(b)), d(px(b), px(c)));
+    const drawn = calls.arc[0];
+    if (!drawn || drawn.r > limb) insideLimbs = false;
+    if (!drawn || drawn.r < 8) visible = false;
+    worst = Math.min(worst, limb - (drawn?.r ?? Infinity));
+  }
+  ok('bågar: radien håller sig innanför ledens ben', insideLimbs, `minsta marginal ${worst.toFixed(0)} px`);
+  ok('bågar: bågen är stor nog att se', visible);
+
+  // Etiketten ska ligga ut längs bågen, alltså i den kil som vinkeln öppnar – inte på ett
+  // fast avstånd åt höger, där den lika gärna kan hamna på andra sidan armen än bågen.
+  const lm = real.frames[real.ph.set].lm;
+  const { ctx, calls } = stub();
+  drawFrame(ctx, img, dest, lm, side, [{ key: 'elbowSet', status: 'good', value: 90 }]);
+  const arc = calls.arc[0];
+  const box = calls.rect[calls.rect.length - 1];   // sista rect är etikettens platta
+  const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+  const [ea, eb, ec] = ARC.elbowSet(j);
+  const ray = k => Math.atan2(lm[k].y * dest.h - arc.y, lm[k].x * dest.w - arc.x);
+  const wrap = d => Math.atan2(Math.sin(d), Math.cos(d));
+  const span = wrap(ray(ec) - ray(ea));            // kilen mellan överarm och underarm
+  const toLabel = wrap(Math.atan2(cy - arc.y, cx - arc.x) - ray(ea));
+  const inWedge = span > 0 ? toLabel > 0 && toLabel < span : toLabel < 0 && toLabel > span;
+  ok('bågar: etiketten ligger i vinkelns kil', inWedge,
+    `${((toLabel / span) * 100).toFixed(0)} % in i kilen`);
 }
 
 // Formateringen följer riktvärdet: sekunder får två decimaler, grader inga.

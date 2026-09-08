@@ -29,6 +29,14 @@ export const ARC = {
 // Hela rutan. Utsnitt anges i samma normaliserade koordinater som ledpunkterna.
 export const FULL = { x: 0, y: 0, w: 1, h: 1 };
 
+// Bågens radie. En fast radie (dest.w/7) räckte så länge det bara var knät: låret och
+// vaden är ungefär så långa i rutan. Armbågen i set point är det inte – överarmen är ~29 px
+// i en fasruta som är 315 bred, alltså kortare än radien. Bågen hamnade då utanför både axel
+// och handled och såg ut att höra till något annat än armen den mäter. Därför får det
+// kortaste benet i leden sätta radien, med taket kvar och ett golv så att bågen syns även
+// när armen är kraftigt förkortad i sidovyn.
+export const arcRadius = (destW, limb) => Math.max(destW / 22, Math.min(destW / 7, limb * 0.6));
+
 // Kortaste vägen mellan två vinklar, används för att välja bågens riktning.
 function angleDiff(a, b) {
   let d = b - a;
@@ -69,26 +77,38 @@ export function drawFrame(ctx, img, dest, lm, side, arcs = [], crop = FULL) {
   }
 
   const j = J(side);
-  const r = dest.w / 7;
   for (const g of arcs) {
     const pts = ARC[g.key]?.(j);
     if (!pts) continue;
     const [a, b, c] = pts;
     const color = STATUS_COLOR[g.status];
-    const a0 = Math.atan2(Y(a) - Y(b), X(a) - X(b));
-    const a1 = Math.atan2(Y(c) - Y(b), X(c) - X(b));
+    const bx = X(b), by = Y(b);
+    const v1x = X(a) - bx, v1y = Y(a) - by;      // leden → det ena benet
+    const v2x = X(c) - bx, v2y = Y(c) - by;      // leden → det andra
+    const l1 = Math.hypot(v1x, v1y) || 1, l2 = Math.hypot(v2x, v2y) || 1;
+    const r = arcRadius(dest.w, Math.min(l1, l2));
+    const a0 = Math.atan2(v1y, v1x);
+    const a1 = Math.atan2(v2y, v2x);
     ctx.strokeStyle = color;
     ctx.lineWidth = Math.max(4, dest.w / 90);
     ctx.beginPath();
-    ctx.arc(X(b), Y(b), r, a0, a1, angleDiff(a0, a1) < 0); // korta vägen mellan strålarna
+    ctx.arc(bx, by, r, a0, a1, angleDiff(a0, a1) < 0); // korta vägen mellan strålarna
     ctx.stroke();
+
+    // Etiketten läggs utåt längs vinkelns bisektris, där bågen buktar, i stället för rakt
+    // åt höger. Då följer siffran med när radien krymper och pekar ut sin egen båge.
+    let dx = v1x / l1 + v2x / l2, dy = v1y / l1 + v2y / l2;
+    const dl = Math.hypot(dx, dy);
+    if (dl < 1e-6) { dx = -v1y / l1; dy = v1x / l1; }  // rakt ben: ta vinkelrätt ut
+    else { dx /= dl; dy /= dl; }
 
     const label = `${Math.round(g.value)}°`;
     ctx.font = `600 ${Math.round(dest.w / 13)}px "Barlow Condensed", Barlow, sans-serif`;
     const w = ctx.measureText(label).width + dest.w / 26;
     const h = Math.round(dest.w / 10);
-    const lx = Math.min(dest.x + dest.w - w - 6, Math.max(dest.x + 6, X(b) + r * 0.5));
-    const ly = Math.min(dest.y + dest.h - h - 6, Math.max(dest.y + 6, Y(b) - h / 2));
+    const cx = bx + dx * (r + h * 0.75), cy = by + dy * (r + h * 0.75);
+    const lx = Math.min(dest.x + dest.w - w - 6, Math.max(dest.x + 6, cx - w / 2));
+    const ly = Math.min(dest.y + dest.h - h - 6, Math.max(dest.y + 6, cy - h / 2));
     ctx.fillStyle = color;
     roundRect(ctx, lx, ly, w, h, 6);
     ctx.fill();
