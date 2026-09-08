@@ -6,7 +6,7 @@
 // data: hastighetsgissningen, prioriteringsordningen och att språken har samma nycklar.
 
 import { readFileSync } from 'node:fs';
-import { L, signals, findPhases, metrics, pickSide, estimateSpeed } from './analysis.js';
+import { L, signals, findPhases, metrics, pickSide, estimateSpeed, postRelease, visibilityByMetric } from './analysis.js';
 import { prioritize, issueList, formatValue } from './rules.js';
 import { personCrop, drawFrame, ARC, FULL } from './draw.js';
 
@@ -128,9 +128,10 @@ const catchThenShot = [
 
 const phasesOf = keys => {
   const frames = clipFrames(keys);
-  const sig = signals(frames, pickSide(frames, 'auto'), ASPECT);
+  const side = pickSide(frames, 'auto');
+  const sig = signals(frames, side, ASPECT);
   const ph = findPhases(sig);
-  return { sig, ph, m: metrics(sig, ph), at: k => sig[ph[k]].t };
+  return { frames, side, sig, ph, m: metrics(sig, ph), at: k => sig[ph[k]].t };
 };
 
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
@@ -217,6 +218,53 @@ ok('klipp: släpphöjden är över en kroppslängd', real.m.releaseHeight > 1, r
     if (rise > best) { best = rise; burst = i; }
   }
   ok('klipp: gamla regeln föll för fångsten', sig[burst].t < 1.0, `${sig[burst].t.toFixed(2)} s`);
+}
+
+// ---------------------------------------------------------------- efter släppet (analysis.js)
+//
+// Måtten efter släppet har inga riktvärden och går inte in i prioriteringen – de är underlag för
+// modellens egen bedömning. Därför testas två saker: att de ger rimliga värden när landningen
+// syns, och att de tiger med null när den inte gör det. Ett halvt mätvärde vore värre än inget,
+// eftersom modellen skulle skriva en punkt om något den inte kan se.
+{
+  const pr = postRelease(plain.sig, plain.ph);
+  ok('efter släppet: landningen hittas i det syntetiska skottet',
+    pr.landing_ms > 200 && pr.landing_ms < 900, `${pr.landing_ms} ms`);
+  ok('efter släppet: streckgubben hoppar rakt upp', Math.abs(pr.driftLanding) < 0.05,
+    pr.driftLanding?.toFixed(3));
+  ok('efter släppet: båda fötterna landar samtidigt', pr.landingSplit_ms === 0, `${pr.landingSplit_ms} ms`);
+  ok('efter släppet: rak bål ger lutning nära noll', Math.abs(pr.trunkAfterRelease) < 5,
+    pr.trunkAfterRelease?.toFixed(1));
+
+  // Klipp som tar slut medan spelaren är i luften: ingen landning att mäta.
+  const cut = phasesOf(shot(0).slice(0, 5));
+  const prCut = postRelease(cut.sig, cut.ph);
+  ok('efter släppet: klipp utan landning ger null',
+    prCut.landing_ms === null && prCut.driftLanding === null && prCut.landingSplit_ms === null,
+    JSON.stringify(prCut));
+
+  const prReal = postRelease(real.sig, real.ph);
+  ok('klipp: landningen ligger inom en dryg sekund efter frånskjutet',
+    prReal.landing_ms > 200 && prReal.landing_ms < 1200, `${prReal.landing_ms} ms`);
+  ok('klipp: driften är i storleksordningen en halv kroppslängd',
+    Math.abs(prReal.driftLanding) < 0.6, prReal.driftLanding?.toFixed(2));
+  ok('klipp: bålens lutning efter släpp är rimlig',
+    Math.abs(prReal.trunkAfterRelease) < 30, `${prReal.trunkAfterRelease?.toFixed(1)}°`);
+  ok('klipp: fötterna når golvet inom en halv sekund från varandra',
+    prReal.landingSplit_ms !== null && prReal.landingSplit_ms < 500, `${prReal.landingSplit_ms} ms`);
+}
+
+// Konfidensen bygger på att en tappad ledpunkt slår igenom på rätt mätvärde, inte på alla.
+{
+  const frames = clipFrames(shot(0));
+  const side = pickSide(frames, 'auto');
+  const sig = signals(frames, side, ASPECT);
+  const ph = findPhases(sig);
+  const elbow = side === 'right' ? L.rElb : L.lElb;
+  frames[ph.set].lm[elbow] = { ...frames[ph.set].lm[elbow], visibility: 0.2 };
+  const vis = visibilityByMetric(frames, ph, side);
+  ok('visibility: en tappad armbåge sänker bara armbågsmåttet',
+    near(vis.elbowSet, 0.2, 1e-9) && vis.kneeMin === 1, `elbowSet ${vis.elbowSet}, kneeMin ${vis.kneeMin}`);
 }
 
 // ---------------------------------------------------------------- utsnitt (draw.js)

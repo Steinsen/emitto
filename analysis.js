@@ -12,9 +12,16 @@ export function angle(a, b, c) {
   return (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
 }
 
-// Vinkel mellan bålen (höft→axel) och lodlinjen. 0 = rak, positivt = framåtlutad.
+// Vinkel mellan bålen (höft→axel) och lodlinjen, tecknad: positivt = axeln ligger åt höger om
+// höften i bilden. Vilket håll som är "framåt" vet den inte – det avgörs av skottriktningen,
+// som postRelease() läser ur handleden vid släpp.
+function trunkTilt(sho, hip) {
+  return (Math.atan2(sho.x - hip.x, hip.y - sho.y) * 180) / Math.PI;
+}
+
+// Vinkel mellan bålen och lodlinjen. 0 = rak, positivt = lutad åt något håll.
 function trunkLean(sho, hip) {
-  return Math.abs((Math.atan2(sho.x - hip.x, hip.y - sho.y) * 180) / Math.PI);
+  return Math.abs(trunkTilt(sho, hip));
 }
 
 function smooth(arr, w = 3) {
@@ -35,15 +42,18 @@ export function pickSide(frames, hand = 'auto') {
   return rMin <= lMin ? 'right' : 'left';
 }
 
+// Vilka ledpunkter som hör till skjutsidan (S) och den andra sidan (O). Bruten ur signals()
+// eftersom både postRelease() och visibilityByMetric() behöver samma uppdelning.
+export const sideJoints = side => (side === 'right'
+  ? { S: { sho: L.rSho, elb: L.rElb, wri: L.rWri, hip: L.rHip, knee: L.rKnee, ank: L.rAnk },
+      O: { sho: L.lSho, elb: L.lElb, wri: L.lWri, hip: L.lHip, knee: L.lKnee, ank: L.lAnk } }
+  : { S: { sho: L.lSho, elb: L.lElb, wri: L.lWri, hip: L.lHip, knee: L.lKnee, ank: L.lAnk },
+      O: { sho: L.rSho, elb: L.rElb, wri: L.rWri, hip: L.rHip, knee: L.rKnee, ank: L.rAnk } });
+
 export function signals(frames, side, aspect) {
   // aspect = width/height, så att vinklar räknas i bildens verkliga proportioner
   const P = (lm, k) => ({ x: lm[k].x * aspect, y: lm[k].y });
-  const S = side === 'right'
-    ? { sho: L.rSho, elb: L.rElb, wri: L.rWri, hip: L.rHip, knee: L.rKnee, ank: L.rAnk }
-    : { sho: L.lSho, elb: L.lElb, wri: L.lWri, hip: L.lHip, knee: L.lKnee, ank: L.lAnk };
-  const O = side === 'right'
-    ? { hip: L.lHip, knee: L.lKnee, ank: L.lAnk }
-    : { hip: L.rHip, knee: L.rKnee, ank: L.rAnk };
+  const { S, O } = sideJoints(side);
 
   const raw = frames.map(({ t, lm }) => {
     const sho = P(lm, S.sho), wri = P(lm, S.wri), hip = P(lm, S.hip);
@@ -62,9 +72,15 @@ export function signals(frames, side, aspect) {
       // dribbla – rörelser som sträcker armen lika mycket, men framåt eller nedåt.
       extUp: (sho.y - wri.y) / torso,
       ankleY: (lm[S.ank].y + lm[O.ank].y) / 2,
+      // Fälten nedan används bara av postRelease(). x är skalat med aspect precis som ovan, så
+      // vågräta och lodräta mått går att jämföra med varandra och med bållängden.
+      trunkTilt: trunkTilt(sho, hip),
+      hipX: hip.x, shoX: sho.x, wriX: wri.x,
+      ankSY: lm[S.ank].y, ankOY: lm[O.ank].y,
     };
   });
-  const keys = ['knee', 'hip', 'elbow', 'trunk', 'wristY', 'ankleY', 'ext', 'extUp'];
+  const keys = ['knee', 'hip', 'elbow', 'trunk', 'wristY', 'ankleY', 'ext', 'extUp',
+    'trunkTilt', 'hipX', 'shoX', 'wriX', 'ankSY', 'ankOY'];
   const sm = {};
   for (const k of keys) sm[k] = smooth(raw.map(r => r[k]));
   return raw.map((r, i) => { const o = { ...r }; for (const k of keys) o[k] = sm[k][i]; return o; });
@@ -72,11 +88,12 @@ export function signals(frames, side, aspect) {
 
 // Stående utgångsläge = medianvärden i första 0,3 s. Bruten ur findPhases för att
 // hastighetsgissningen behöver samma golvnivå innan faserna är kända.
+const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+
 export function floorLevel(sig) {
   const n = sig.length;
   const fps = n / (sig[n - 1].t - sig[0].t || 1);
   const head = sig.slice(0, Math.max(3, Math.round(fps * 0.3)));
-  const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
   const ankleBase = median(head.map(f => f.ankleY));
   const noseBase = median(head.map(f => f.noseY));
   return { fps, ankleBase, noseBase, bodyPx: (ankleBase - noseBase) / 0.87 }; // näsa→fotled ≈ 87 % av kroppslängden
@@ -181,6 +198,91 @@ export function metrics(sig, ph) {
     takeoffLag,
     hipVel: t > 0 ? (re.hip - lo.hip) / t : 0,
     releaseHeight: ph.bodyPx > 0 ? (ph.ankleBase - re.wristY) / ph.bodyPx : null, // släpphöjd / kroppslängd
+  };
+}
+
+// ---------------------------------------------------------------- efter släppet
+//
+// Det som händer efter att bollen lämnat handen – bakåtlutning, framåtdrift, hur man landar –
+// har inga riktvärden i rules.js och går inte in i prioriteringen. Måtten här är tillägg, inte
+// krav: varje enskilt kan bli null (ingen tydlig landning, för kort klipp, ledpunkt som saknas)
+// utan att något kastas. E_NO_SHOT är fortfarande fasdetekteringens ensak.
+
+const AFTER_RELEASE = 0.15;   // sekunder efter släpp som bålens lutning läses av
+
+// Första rutan från och med `from` där fotleden är tillbaka på golvet. Golvet tas som fotledens
+// lägsta läge efter hoppets topp, inte som nivån den stod på i början av klippet: spelaren landar
+// sällan exakt där hon hoppade, och redan ett par centimeters förflyttning i djupled flyttar
+// fotleden i bild mer än landningströskeln är stor. -1 = landar aldrig inom klippet.
+function backOnFloor(sig, from, until, pick, lift) {
+  let floor = -Infinity;
+  for (let i = from; i <= until; i++) floor = Math.max(floor, pick(sig[i]));
+  if (!Number.isFinite(floor)) return -1;
+  for (let i = from; i < sig.length; i++) if (pick(sig[i]) >= floor - lift) return i;
+  return -1;
+}
+
+export function postRelease(sig, ph) {
+  const out = { landing_ms: null, driftLanding: null, trunkAfterRelease: null, landingSplit_ms: null };
+  const { ankleBase, noseBase, bodyPx, fps } = floorLevel(sig);
+  const re = sig[ph.release];
+
+  // Skottriktningen: dit den skjutande handleden pekar i förhållande till axeln vid släpp.
+  // Allt tecknat nedan mäts i den riktningen, så vänster- och högerhänta får samma tecken.
+  const dir = re.wriX >= re.shoX ? 1 : -1;
+
+  // Bålens lutning en bit efter släppet. Negativt = bakåt, bort från korgen.
+  const after = ph.release + Math.round(fps * AFTER_RELEASE);
+  if (after < sig.length) out.trunkAfterRelease = dir * sig[after].trunkTilt;
+
+  if (ph.takeoff < 0 || !(bodyPx > 0)) return out;   // aldrig i luften: ingen landning att mäta
+
+  const lift = 0.015 * (ankleBase - noseBase);
+
+  // Sökningen börjar i hoppets topp, inte vid frånskjutet: precis efter frånskjutet är foten
+  // fortfarande nära golvet och skulle räknas som en landning direkt. Golvet läses av inom 1,5 s
+  // efter toppen, så att spelaren hinner landa men inte gå iväg ur bilden först.
+  const start = Math.max(ph.apex, ph.release);
+  const until = Math.min(sig.length - 1, start + Math.round(fps * 1.5));
+  if (until <= start) return out;                    // klippet tar slut i hoppet
+  const land = backOnFloor(sig, start, until, f => f.ankleY, lift);
+  if (land < 0) return out;                          // klippet tar slut medan spelaren är i luften
+
+  out.landing_ms = Math.round((sig[land].t - sig[ph.takeoff].t) * 1000);
+  out.driftLanding = (dir * (sig[land].hipX - sig[ph.takeoff].hipX)) / bodyPx;
+
+  const lS = backOnFloor(sig, start, until, f => f.ankSY, lift);
+  const lO = backOnFloor(sig, start, until, f => f.ankOY, lift);
+  if (lS >= 0 && lO >= 0) out.landingSplit_ms = Math.round(Math.abs(sig[lS].t - sig[lO].t) * 1000);
+  return out;
+}
+
+// Hur väl MediaPipe såg de leder varje mätvärde bygger på, i den ruta värdet läses av.
+// Ligger här och inte i coach.js därför att det här är lagret som vet vilka leder ett mätvärde
+// använder; coach.js tröskar bara på siffran.
+export function visibilityByMetric(frames, ph, side) {
+  const { S, O } = sideJoints(side);
+  const at = (idx, joints) => {
+    const lm = frames[idx]?.lm;
+    if (!lm) return null;
+    let v = 1;
+    for (const k of joints) {
+      const p = lm[k];
+      if (!p) return null;
+      if (p.visibility != null) v = Math.min(v, p.visibility);
+    }
+    return v;
+  };
+  const legs = [S.hip, S.knee, S.ank, O.hip, O.knee, O.ank];
+  const low = (a, b) => (a == null || b == null ? null : Math.min(a, b));
+  return {
+    kneeMin: at(ph.lowest, legs),
+    hipMin: at(ph.lowest, [S.sho, S.hip, S.knee]),
+    trunkLowest: at(ph.lowest, [S.sho, S.hip]),
+    elbowSet: at(ph.set, [S.sho, S.elb, S.wri]),
+    kneeRelease: at(ph.release, legs),
+    releaseHeight: at(ph.release, [S.wri, S.ank, O.ank]),
+    tLowToRelease: low(at(ph.lowest, legs), at(ph.release, [S.wri])),
   };
 }
 
