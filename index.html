@@ -140,6 +140,11 @@
   .allclear{background:var(--ink);color:#fff;border-radius:var(--r);padding:20px 22px;margin:14px 0 0}
   .allclear h3{font-family:"Barlow Condensed";font-weight:600;font-size:30px;margin:0 0 10px}
   .allclear p{color:#DCE5E9}
+  /* Dela – bilden hamnar i chatten, sidan är för den som vill spara hela rapporten */
+  .share{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 8px}
+  .share button{flex:1 1 auto}
+  .share button[disabled]{opacity:.6}
+  #sharenote{margin-bottom:0}
   #again{margin-top:26px}
   @media (prefers-reduced-motion:reduce){.ball{animation:none}.phases{scroll-behavior:auto}}
   @media (max-width:440px){.instr{grid-template-columns:1fr}h1{font-size:38px}}
@@ -215,6 +220,12 @@
     <h2 data-i18n="workTitle"></h2>
     <p class="quiet" id="goodnote"></p>
     <ol class="work" id="work"></ol>
+
+    <div class="share">
+      <button id="share-image" data-i18n="shareImage"></button>
+      <button id="share-report" class="ghost" data-i18n="shareReport"></button>
+    </div>
+    <p class="quiet" id="sharenote" data-i18n="shareNote"></p>
 
     <details>
       <summary data-i18n="detailsTitle"></summary>

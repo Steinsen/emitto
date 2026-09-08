@@ -1,9 +1,11 @@
 // app.js – laddar klippet, kör MediaPipe Pose i webbläsaren, ritar resultatet.
 // Videon lämnar aldrig telefonen. Bara siffror skulle behöva skickas till en Worker senare.
 import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
-import { L, pickSide, signals, findPhases, metrics, estimateSpeed, rescaleTime } from './analysis.js';
-import { prioritize, issueList, allClear, goodNote, labelOf, unitIn, refOf, METRIC_PHASE } from './rules.js';
+import { pickSide, signals, findPhases, metrics, estimateSpeed, rescaleTime } from './analysis.js';
+import { prioritize, issueList, allClear, goodNote, labelOf, refOf, formatValue, METRIC_PHASE } from './rules.js';
 import { t, getLang, setLang, applyStatic, LANGS } from './i18n.js';
+import { drawFrame, STATUS_COLOR, ARC } from './draw.js';
+import { shareImage, shareReport, deliver, stamp } from './share.js';
 
 const $ = id => document.getElementById(id);
 const video = $('video'), file = $('file');
@@ -316,88 +318,18 @@ async function recalculate(choice) {
 
 // ---------------------------------------------------------------- ritning
 
-const BONES = side => (side === 'right'
-  ? [[L.rSho, L.rElb], [L.rElb, L.rWri], [L.rSho, L.rHip], [L.rHip, L.rKnee], [L.rKnee, L.rAnk]]
-  : [[L.lSho, L.lElb], [L.lElb, L.lWri], [L.lSho, L.lHip], [L.lHip, L.lKnee], [L.lKnee, L.lAnk]]);
-
-const J = side => (side === 'right'
-  ? { sho: L.rSho, elb: L.rElb, wri: L.rWri, hip: L.rHip, knee: L.rKnee, ank: L.rAnk }
-  : { sho: L.lSho, elb: L.lElb, wri: L.lWri, hip: L.lHip, knee: L.lKnee, ank: L.lAnk });
-
-const STATUS_COLOR = { good: '#1F9D6A', meh: '#E0A800', poor: '#D64545', na: '#8FA3AB' };
-
-// Vilka vinklar som går att rita ut som en båge i en led, per mätvärde.
-const ARC = {
-  kneeMin:     j => [j.hip, j.knee, j.ank],
-  kneeRelease: j => [j.hip, j.knee, j.ank],
-  elbowSet:    j => [j.sho, j.elb, j.wri],
-};
-
+// Ritar en fas i sin egen canvas i kortet. Själva ritandet ligger i draw.js, eftersom
+// delningsbilden ritar samma fas med samma kod.
 function drawPhase(shot, side, arcs) {
-  const { canvas: src, lm } = shot;
-  const c = shot.view;
-  c.width = src.width; c.height = src.height;
-  const ctx = c.getContext('2d');
-  ctx.drawImage(src, 0, 0);
-  const X = k => lm[k].x * c.width, Y = k => lm[k].y * c.height;
-
-  ctx.lineWidth = Math.max(3, c.width / 110);
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = '#FFE600';
-  for (const [a, b] of BONES(side)) {
-    ctx.beginPath(); ctx.moveTo(X(a), Y(a)); ctx.lineTo(X(b), Y(b)); ctx.stroke();
-  }
-
-  if (!arcs.length) return;
-  const j = J(side);
-  const r = c.width / 7;
-  for (const g of arcs) {
-    const pts = ARC[g.key]?.(j);
-    if (!pts) continue;
-    const [a, b, cc] = pts;
-    const color = STATUS_COLOR[g.status];
-    const a0 = Math.atan2(Y(a) - Y(b), X(a) - X(b));
-    const a1 = Math.atan2(Y(cc) - Y(b), X(cc) - X(b));
-    ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(4, c.width / 90);
-    ctx.beginPath();
-    ctx.arc(X(b), Y(b), r, a0, a1, angleDiff(a0, a1) < 0); // korta vägen mellan strålarna
-    ctx.stroke();
-
-    const label = `${Math.round(g.value)}°`;
-    ctx.font = `600 ${Math.round(c.width / 13)}px "Barlow Condensed", Barlow, sans-serif`;
-    const w = ctx.measureText(label).width + 16;
-    const h = Math.round(c.width / 10);
-    const lx = Math.min(c.width - w - 6, Math.max(6, X(b) + r * 0.5));
-    const ly = Math.min(c.height - h - 6, Math.max(6, Y(b) - h / 2));
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    // roundRect saknas i iOS Safari före 16.4 – hellre en fyrkant än ett kastat fel
-    if (ctx.roundRect) ctx.roundRect(lx, ly, w, h, 6); else ctx.rect(lx, ly, w, h);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, lx + 8, ly + h / 2);
-  }
-}
-
-// Kortaste vägen mellan två vinklar, används för att välja bågens riktning.
-function angleDiff(a, b) {
-  let d = b - a;
-  while (d > Math.PI) d -= 2 * Math.PI;
-  while (d < -Math.PI) d += 2 * Math.PI;
-  return d;
+  const src = shot.canvas, c = shot.view;
+  c.width = src.width;
+  c.height = src.height;
+  drawFrame(c.getContext('2d'), src, { x: 0, y: 0, w: c.width, h: c.height }, shot.lm, side, arcs);
 }
 
 // ---------------------------------------------------------------- resultat
 
-function fmt(value, key) {
-  if (value == null) return '–';
-  const r = refOf(key);
-  const dec = r.dec ?? (r.unit === 's' ? 2 : 0);
-  const unit = unitIn(key, getLang());
-  return unit === '°' ? `${value.toFixed(dec)}${unit}` : `${value.toFixed(dec)} ${unit}`;
-}
+const fmt = (value, key) => formatValue(key, value, getLang());
 
 function renderResult(data) {
   const { shots, side, m, ph, prio, speed } = data;
@@ -486,20 +418,76 @@ function renderResult(data) {
     <span class="val">${fmt(g.value, g.key)}</span></li>`).join('');
 
   // Hastigheten analysen räknar i, och möjligheten att ändra den
-  const label = speed.factor === 1 ? t('speedNormalPhrase') : `${speed.factor}×`;
-  $('speednote').textContent =
-    speed.source === 'manual' ? t('speedManualNote')(label)
-    : speed.source === 'jump' ? t('speedFromJump')(label)
-    : t('speedAssumed');
+  $('speednote').textContent = speedNote(data);
   buildSpeedPicker($('speed-result'), recalculate);
 
   // Förbehåll
+  $('caveat').textContent = caveatNote(data);
+  prepareShare(data);
+}
+
+// De två meningarna som sammanfattar hur resultatet ska läsas. Egna funktioner därför att
+// de ska stå ordagrant likadant i appen, i delningsbilden och i den sparade sidan.
+function speedNote({ speed }) {
+  const label = speed.factor === 1 ? t('speedNormalPhrase') : `${speed.factor}×`;
+  return speed.source === 'manual' ? t('speedManualNote')(label)
+    : speed.source === 'jump' ? t('speedFromJump')(label)
+    : t('speedAssumed');
+}
+
+function caveatNote({ m, ph, side }) {
   const lag = m.takeoffLag == null ? t('lagUnknown')
     : m.takeoffLag < 0 ? t('lagBefore')(Math.abs(m.takeoffLag).toFixed(2))
     : t('lagAfter')(m.takeoffLag.toFixed(2));
   const extra = t('extra')(m.hipVel.toFixed(0), lag, ph.fps.toFixed(0));
-  $('caveat').textContent = t('caveat')(t(side === 'right' ? 'sideRight' : 'sideLeft'), extra);
+  return t('caveat')(t(side === 'right' ? 'sideRight' : 'sideLeft'), extra);
 }
+
+// ---------------------------------------------------------------- dela
+//
+// Bilden görs i förväg, så snart resultatet ritats. Safari kräver att navigator.share
+// anropas i samma klick som användaren gjorde, och en bild som ritas först efter klicket
+// hinner bryta den kedjan – då skulle delningsrutan aldrig öppnas. Är bilden redan klar
+// när knappen trycks blir delningen bara ett anrop.
+let card = null;   // { lang, blob } – språkbytet ritar om resultatet och gör om bilden
+
+function prepareShare(data) {
+  card = null;
+  const lang = getLang();
+  const soon = window.requestIdleCallback || (fn => setTimeout(fn, 200));
+  soon(() => {
+    if (last !== data || getLang() !== lang) return;   // nytt klipp eller nytt språk hann före
+    const job = shareImage(data, { speed: speedNote(data) })
+      .then(blob => { if (last === data && getLang() === lang) card = { lang, blob }; return blob; })
+      .catch(() => null);
+    card = { lang, job };
+  });
+}
+
+async function withButton(btn, working, run) {
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = working;
+  try {
+    await run();
+  } catch {
+    $('sharenote').textContent = t('shareFailed');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+$('share-image').addEventListener('click', e => withButton(e.currentTarget, t('shareWorking'), async () => {
+  const ready = card && card.lang === getLang() ? (card.blob || await card.job) : null;
+  const blob = ready || await shareImage(last, { speed: speedNote(last) });
+  await deliver(blob, stamp('jpg'), `Emitto – ${t('tag')}`);
+}));
+
+$('share-report').addEventListener('click', e => withButton(e.currentTarget, t('shareWorking'), async () => {
+  const blob = await shareReport(last, { speed: speedNote(last), caveat: caveatNote(last) });
+  await deliver(blob, stamp('html'), `Emitto – ${t('tag')}`);
+}));
 
 function buildDots(wrap) {
   const dots = $('dots');

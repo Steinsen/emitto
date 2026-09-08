@@ -13,9 +13,17 @@ tryck på en bild för att se vinklarna i leden och vilka som ligger utanför ri
 faserna ligger listan med det som är värt att jobba på, i prioriterad ordning. Varje punkt
 fälls ut med ett plus: varför det inte är optimalt, en övning, och en rad pepp.
 
+Resultatet går att dela på två sätt. **Dela som bild** ger en bild med faserna, listan och
+alla mätvärden – på telefonen öppnas den vanliga delningsrutan, så den kan skickas i samma
+chatt som allt annat. **Spara som sida** ger en enda HTML-fil med hela rapporten, bilderna
+inbakade och inga externa anrop: att spara, maila eller skriva ut. Båda skapas i webbläsaren
+av rutor som redan är avlästa – klippet laddas fortfarande aldrig upp.
+
 ## Filer
 - `index.html` – gränssnitt och stil, de tre vyerna
 - `app.js` – laddar klipp, kör MediaPipe ruta för ruta, ritar faser och listor
+- `draw.js` – ritar en fas: bilden, skelettet och vinkelbågarna (används av både vyn och delningen)
+- `share.js` – delningsbild (JPEG) och fristående rapport (HTML)
 - `analysis.js` – hittar faserna (lägsta läge, set point, släpp, frånskjut, följning) och räknar mätvärden
 - `rules.js` – riktvärden, prioriteringslogik, feedbacktexter på båda språken. **Det är här du justerar.**
 - `i18n.js` – gränssnittets strängar och språkval

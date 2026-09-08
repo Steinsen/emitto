@@ -7,7 +7,8 @@
 
 import { readFileSync } from 'node:fs';
 import { L, signals, findPhases, metrics, pickSide, estimateSpeed } from './analysis.js';
-import { prioritize, issueList } from './rules.js';
+import { prioritize, issueList, formatValue } from './rules.js';
+import { personCrop } from './draw.js';
 
 let fail = 0;
 const ok = (name, cond, note = '') => {
@@ -190,7 +191,7 @@ function fixture(name) {
   });
   const sig = signals(frames, pickSide(frames, 'auto'), f.aspect);
   const ph = findPhases(sig);
-  return { sig, ph, m: metrics(sig, ph), at: k => sig[ph[k]].t };
+  return { frames, aspect: f.aspect, sig, ph, m: metrics(sig, ph), at: k => sig[ph[k]].t };
 }
 
 const real = fixture('catch-then-shot_lm');
@@ -217,6 +218,35 @@ ok('klipp: släpphöjden är över en kroppslängd', real.m.releaseHeight > 1, r
   }
   ok('klipp: gamla regeln föll för fångsten', sig[burst].t < 1.0, `${sig[burst].t.toFixed(2)} s`);
 }
+
+// ---------------------------------------------------------------- utsnitt (draw.js)
+//
+// Delningsbilden visar fyra faser bredvid varandra, så rutorna klipps runt spelaren.
+// Går det snett är det inte bara fult: fötterna eller bollhanden kan hamna utanför just
+// den bild som skickas till tränaren, och då mäter appen på något man inte kan se.
+{
+  const box = 3 / 4;
+  const joints = [L.nose, L.lSho, L.rSho, L.lWri, L.rWri, L.lHip, L.rHip, L.lAnk, L.rAnk];
+  let inside = true, framed = true, shape = true;
+  for (const key of ['lowest', 'set', 'release', 'follow']) {
+    const lm = real.frames[real.ph[key]].lm;
+    const c = personCrop(lm, real.aspect, box);
+    for (const j of joints) {
+      if (lm[j].x < c.x || lm[j].x > c.x + c.w || lm[j].y < c.y || lm[j].y > c.y + c.h) inside = false;
+    }
+    if (c.x < 0 || c.y < 0 || c.x + c.w > 1.001 || c.y + c.h > 1.001) framed = false;
+    if (!near((c.w * real.aspect) / c.h, box, 0.01)) shape = false;
+  }
+  ok('utsnitt: hela spelaren är med i varje fas', inside);
+  ok('utsnitt: håller sig innanför bilden', framed);
+  ok('utsnitt: rutans proportioner stämmer', shape);
+}
+
+// Formateringen följer riktvärdet: sekunder får två decimaler, grader inga.
+ok('format: sekunder med två decimaler', formatValue('tLowToRelease', 0.6, 'sv') === '0.60 s',
+  formatValue('tLowToRelease', 0.6, 'sv'));
+ok('format: grader utan mellanslag', formatValue('kneeMin', 100.4, 'sv') === '100°', formatValue('kneeMin', 100.4, 'sv'));
+ok('format: saknat värde blir tankstreck', formatValue('kneeMin', null, 'sv') === '–');
 
 // ---------------------------------------------------------------- prioritering
 // Jalen-fallet: tvåstegsskott med paus, ~1,05 s lägsta→släpp, knä ~100°.
