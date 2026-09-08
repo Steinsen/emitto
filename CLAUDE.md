@@ -143,6 +143,13 @@ progressbaren fylls av seek-loopen.
 Resultatvyn har faserna som en svepbar rad. Tryck på ett kort ritar ut vinklarna i leden med
 färg efter status och listar fasens mätvärden mot riktvärdet.
 
+**Fasrutan klipps runt spelaren** (`personCrop`, ruta 3:4), samma utsnitt som delningsbilden.
+Hela bildrutan såg riktig ut på ett närbildsklipp men inte på ett filmat från läktaren: är
+spelaren en sjättedel av bildhöjden blir överarmen ~14 px i den sparade rutan, kortare än
+bågens minsta radie, och både båge och siffra är då ritade för kortet i stället för för
+kroppen. Priset är att en vidvinkelbild förstoras mycket (~5×) och blir mjuk – den gränsen
+sitter i `PHASE_H`.
+
 **Fasbilden tas i analyssvepet, inte efteråt.** Varje avläst ruta sparas som JPEG i
 kortstorlek (~35 kB, ~4 MB för åtta sekunder) i samma ögonblick som MediaPipe läser videon.
 Att i stället söka tillbaka till fasens tid efteråt gav fel bild på telefon: två sökningar
@@ -179,7 +186,8 @@ Två saker är inte godtyckliga:
 - **Rutorna klipps runt spelaren** (`personCrop` i `draw.js`). Klippen är filmade på håll
   för att hela kroppen ska synas; med fyra rutor bredvid varandra i en delningsbild blir
   spelaren annars en streckgubbe i frimärksformat. Utsnittet utgår från ledpunkterna, så
-  hela kroppen är alltid med – `test-units.mjs` kontrollerar just det.
+  hela kroppen är alltid med – `test-units.mjs` kontrollerar just det. Resultatvyn använder
+  samma utsnitt, så appen och det tränaren får skickat visar samma bild.
 
 Sidan bär inte med sig typsnitten: tre TTF-filer hade lagt en halv megabyte till en fil som
 ska kunna mailas. Färgerna och strukturen bär ändå.
@@ -214,9 +222,13 @@ och landade där – bedömningen av ett givet klipp är alltså oförändrad.
   HEVC (`hvc1`, 1920×1080 med rotationsflagga) och fungerar därför bara i Safari – exportera
   om dem. 20260906 ligger inte i `EXAMPLES` i `app.js` ännu, just därför. Klipp som webbläsaren inte kan avkoda ger nu ett tydligt fel (`E_VIDEO`)
   i stället för en laddning som snurrar för evigt, men felet kvarstår för besökaren.
-- Fasbilderna sparas 560 px höga (`PHASE_H`). Delningsbilden förstorar utsnittet ur dem
-  ~1,5 gånger, så den är lite mjuk. Höj `PHASE_H` bara om minnet i svepet tål det –
-  åtta sekunder ligger redan på ~4 MB.
+- Fasbilderna sparas 560 px höga (`PHASE_H`) som hela bildrutan. Utsnittet runt spelaren
+  görs först när fasen ritas, så det som blir kvar av spelaren är det som fick plats i de
+  560 pixlarna: ~1,5 gångers förstoring på ett närbildsklipp, ~5 på ett filmat från
+  läktaren, och då är bilden mjuk. Höj `PHASE_H` bara om minnet i svepet tål det – åtta
+  sekunder ligger redan på ~4 MB. Billigare vore att klippa redan i svepet, där videon
+  fortfarande finns i full upplösning: samma bytes, mer spelare. Det kräver att utsnittet
+  sparas per ruta, eftersom `drawFrame` behöver veta vilket utsnitt bilden redan har.
 - Seek-loopen i `app.js` kan vara långsam på telefon. Sänk `SAMPLE_FPS` (15 → 10) före andra
   optimeringar. `delegate: 'GPU'` kan behöva bli `'CPU'` på vissa Android-enheter.
 

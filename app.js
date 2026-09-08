@@ -4,7 +4,7 @@ import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@m
 import { pickSide, signals, findPhases, metrics, estimateSpeed, rescaleTime } from './analysis.js';
 import { prioritize, issueList, allClear, goodNote, labelOf, refOf, formatValue, METRIC_PHASE } from './rules.js';
 import { t, getLang, setLang, applyStatic, LANGS } from './i18n.js';
-import { drawFrame, STATUS_COLOR, ARC } from './draw.js';
+import { drawFrame, personCrop, STATUS_COLOR, ARC } from './draw.js';
 import { shareImage, shareReport, deliver, stamp } from './share.js';
 
 const $ = id => document.getElementById(id);
@@ -320,11 +320,22 @@ async function recalculate(choice) {
 
 // Ritar en fas i sin egen canvas i kortet. Själva ritandet ligger i draw.js, eftersom
 // delningsbilden ritar samma fas med samma kod.
+//
+// Utsnittet följer spelaren, precis som i delningsbilden. Hela bildrutan såg riktig ut på
+// ett närbildsklipp men inte på ett filmat från läktaren: är spelaren en sjättedel av
+// bildhöjden blir överarmen ~14 px i den sparade rutan, och då är både skelettet och
+// siffran ritade för kortet i stället för för kroppen – bågen hamnar utanför armen och
+// etiketten svävar en halv spelarhöjd bort. Med utsnittet fyller kroppen kortet och allt
+// som skalas mot dest.w blir proportionerligt av sig självt. Att appen och det tränaren
+// får skickat visar samma utsnitt är dessutom hela poängen med att draw.js är gemensam.
+const CARD_ASPECT = 3 / 4;   // bredd/höjd, samma ruta som delningsbildens fasrutor
+
 function drawPhase(shot, side, arcs) {
   const src = shot.canvas, c = shot.view;
-  c.width = src.width;
   c.height = src.height;
-  drawFrame(c.getContext('2d'), src, { x: 0, y: 0, w: c.width, h: c.height }, shot.lm, side, arcs);
+  c.width = Math.round(src.height * CARD_ASPECT);
+  const crop = personCrop(shot.lm, src.width / src.height, CARD_ASPECT);
+  drawFrame(c.getContext('2d'), src, { x: 0, y: 0, w: c.width, h: c.height }, shot.lm, side, arcs, crop);
 }
 
 // ---------------------------------------------------------------- resultat
