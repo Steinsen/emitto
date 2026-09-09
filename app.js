@@ -1,6 +1,6 @@
 // app.js – laddar klippet, kör MediaPipe Pose i webbläsaren, ritar resultatet.
-// Videon lämnar aldrig telefonen. Till Workern går bara siffror – och de bildrutor användaren
-// kryssat i, som beskurna stillbilder. Se coach.js.
+// Videon lämnar aldrig telefonen. Till Workern går siffrorna och fem beskurna stillbilder ur
+// rutor som redan lästs av – aldrig klippet. Se coach.js.
 import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 import { pickSide, signals, findPhases, metrics, estimateSpeed, rescaleTime, postRelease, visibilityByMetric } from './analysis.js';
 import { prioritize, issueList, allClear, goodNote, labelOf, refOf, formatValue, METRIC_PHASE } from './rules.js';
@@ -482,35 +482,20 @@ function caveatNote({ m, ph, side }) {
 
 // ---------------------------------------------------------------- AI-formulerad text
 //
-// Fallbacken är normalläget, inte undantaget: resultatvyn ritas färdig med rules.js egna texter,
-// och först när workern svarat byts orden ut – märkta "AI-formulerad". Går anropet inte igenom
-// står texten kvar och det enda som syns är en nedtonad rad. Offline fungerar appen precis som
-// förut, och ordningen i listan kommer aldrig härifrån.
+// Den mätta delen står färdig direkt: resultatvyn ritas med rules.js egna texter så snart
+// analysen är klar, och först när workern svarat byts orden ut – märkta "AI-formulerad". Under
+// tiden studsar bollen där texten ska stå. Går anropet inte igenom står rules.js text kvar och
+// det enda som syns är en nedtonad rad. Ordningen i listan kommer aldrig härifrån.
 //
-// Bildrutorna skickas bara om användaren kryssat i rutan. De är beskurna stillbilder, inte
-// klippet – klippet lämnar aldrig enheten, och det gäller oavsett kryssrutan.
+// Bildrutorna följer alltid med: fem beskurna stillbilder ur rutor som redan lästs av. Klippet
+// gör det inte – det lämnar aldrig enheten.
 
-const FRAMES_KEY = 'emitto.frames';   // ihågkommet i sessionen, aldrig längre än så
-
-let coach = null;   // { data, lang, frames, status: 'working'|'done'|'failed', result }
+let coach = null;   // { data, lang, status: 'working'|'done'|'failed', result }
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const badge = () => `<span class="ai">${esc(t('coachBadge'))}</span>`;
 
 const coachResult = data => (coach && coach.data === data && coach.lang === getLang() && coach.status === 'done' ? coach.result : null);
-
-// Samma val på två ställen: i startvyn, så att den som inte vill skicka bilder slipper mötas av
-// frågan först när resultatet ligger på skärmen, och i resultatvyn, där ett kryss hämtar en ny
-// text utan att klippet analyseras om. De hålls i takt här; sanningen är variabeln, inte rutorna.
-let sendFrames = false;
-const frameBoxes = () => [$('sendframes-start'), $('sendframes')];
-const wantFrames = () => sendFrames;
-
-function setSendFrames(on) {
-  sendFrames = on;
-  for (const box of frameBoxes()) box.checked = on;
-  try { sessionStorage.setItem(FRAMES_KEY, on ? '1' : '0'); } catch { /* privat läge */ }
-}
 
 const chosenAge = () => {
   const v = parseInt($('age').value, 10);
@@ -522,13 +507,13 @@ function framesFor(data) {
 }
 
 async function ensureCoach(data) {
-  const lang = getLang(), frames = wantFrames();
-  if (coach && coach.data === data && coach.lang === lang && coach.frames === frames) return;
-  const job = { data, lang, frames, status: 'working', result: null };
+  const lang = getLang();
+  if (coach && coach.data === data && coach.lang === lang) return;
+  const job = { data, lang, status: 'working', result: null };
   coach = job;
   renderCoach(data, lang);
   try {
-    const jpegs = frames ? collectFrames(framesFor(data), data.aspect) : [];
+    const jpegs = collectFrames(framesFor(data), data.aspect);
     job.result = await requestCoach(buildPayload({ lang, age: chosenAge(), data, frames: jpegs }));
     job.status = 'done';
   } catch {
@@ -548,7 +533,11 @@ function renderCoach(data, lang) {
   const res = job && job.status === 'done' ? job.result : null;
   const note = $('coachnote'), box = $('after'), extra = $('coachextra');
 
-  note.innerHTML = !job || job.status === 'working' ? esc(t('coachWorking'))
+  // Bollen studsar bara medan vi väntar. Den försvinner i samma ögonblick som texten är på
+  // plats – eller uteblev; ett spinnande hjul som aldrig tar slut är värre än ett tyst nej.
+  const waiting = !job || job.status === 'working';
+  $('coachwait').hidden = !waiting;
+  note.innerHTML = waiting ? ''
     : job.status === 'failed' ? esc(t('coachFailed'))
     : `${badge()} ${esc(res.summary)}`;
 
@@ -570,14 +559,6 @@ function renderCoach(data, lang) {
   if (res) parts.push(`<p class="quiet">${esc(t('coachNote'))}</p>`);
   extra.innerHTML = parts.join('');
 }
-
-for (const box of frameBoxes()) {
-  box.addEventListener('change', e => {
-    setSendFrames(e.currentTarget.checked);
-    if (last) { showCoach(last); ensureCoach(last); }   // ny text, samma analys
-  });
-}
-try { setSendFrames(sessionStorage.getItem(FRAMES_KEY) === '1'); } catch { setSendFrames(false); }
 
 // ---------------------------------------------------------------- dela
 //

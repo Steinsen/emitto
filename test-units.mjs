@@ -568,6 +568,30 @@ ok('svenska och engelska har samma nycklar',
   const unknown = used.filter(k => !sv.includes(k));
   ok('alla data-i18n-nycklar finns i i18n.js', unknown.length === 0, unknown.join(',') || 'inga saknas');
 
+  // Ett element som göms med hidden-attributet syns ändå om CSS:en sätter display på det:
+  // en egen regel vinner över webbläsarens [hidden]{display:none}. Bollen som hämtar den
+  // avancerade analysen låg kvar och studsade av just det skälet, och det syntes inte i någon
+  // annan kontroll – felet är osynligt tills någon tittar på skärmen.
+  {
+    const hiddenSel = new Set();
+    for (const [, tag] of html.matchAll(/<(\w+[^>]*\bhidden\b[^>]*)>/g)) {
+      for (const [, cls] of tag.matchAll(/class="([^"]+)"/g)) for (const c of cls.split(/\s+/)) hiddenSel.add(`.${c}`);
+      for (const [, id] of tag.matchAll(/\bid="([\w-]+)"/g)) hiddenSel.add(`#${id}`);
+    }
+    const risky = [];
+    for (const [, sel, body] of html.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!/display\s*:/.test(body) || /\[hidden\]/.test(sel)) continue;
+      // Selektorn kommer med allt sedan förra klammern – kommentarer och radbrytningar med.
+      // Bara sista raden är själva selektorn.
+      for (const part of sel.split(',')) {
+        const s = part.split('\n').pop().trim();
+        if (hiddenSel.has(s) && !html.includes(`${s}[hidden]`)) risky.push(s);
+      }
+    }
+    ok('element som göms med hidden har display:none som vinner', risky.length === 0,
+      risky.join(',') || 'inga');
+  }
+
   const share = readFileSync(new URL('./share.js', import.meta.url), 'utf8');
   const called = [...new Set([...(app + share).matchAll(/\bt\('(\w+)'\)/g)].map(m => m[1]))];
   const gone = called.filter(k => !sv.includes(k));
