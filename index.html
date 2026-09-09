@@ -152,8 +152,11 @@
   #coachextra h3{font-family:"Barlow Condensed";font-weight:600;font-size:19px;margin:16px 0 4px}
   #coachextra ul{margin:0;padding-left:20px;color:var(--ink-soft);font-size:15px}
   #coachextra li{margin:0 0 4px}
+  .advanced{margin:22px 0 0}
+  .advanced h2{font-size:24px;margin:0 0 10px}
+  .advanced .quiet{margin:8px 0 0}
   .consent{display:flex;gap:11px;align-items:flex-start;background:var(--court);border-radius:var(--r);
-    padding:14px 16px;margin:22px 0 0;cursor:pointer}
+    padding:14px 16px;margin:0;cursor:pointer}
   .consent input{flex:none;width:20px;height:20px;margin:2px 0 0;accent-color:var(--ball)}
   .consent .k{display:block;font-weight:600;font-size:16px}
   .consent .quiet{display:block;margin-top:3px}
@@ -214,6 +217,21 @@
     </div>
     <div class="status" id="error"></div>
 
+    <!-- Valet görs före analysen, så att den som inte vill skicka bilder slipper upptäcka
+         frågan först när resultatet ligger på skärmen. Samma val finns i resultatvyn, och
+         de två kryssrutorna hålls i takt av app.js. -->
+    <div class="advanced">
+      <h2 data-i18n="advancedTitle"></h2>
+      <label class="consent">
+        <input type="checkbox" id="sendframes-start">
+        <span>
+          <span class="k" data-i18n="framesLabel"></span>
+          <span class="quiet" data-i18n="framesHint"></span>
+        </span>
+      </label>
+      <p class="quiet" data-i18n="framesDefault"></p>
+    </div>
+
     <div class="examples">
       <h2 data-i18n="examplesTitle"></h2>
       <div class="exlist" id="examples"></div>
@@ -252,13 +270,17 @@
     <div class="after" id="after" hidden></div>
     <div id="coachextra"></div>
 
-    <label class="consent">
-      <input type="checkbox" id="sendframes">
-      <span>
-        <span class="k" data-i18n="framesLabel"></span>
-        <span class="quiet" data-i18n="framesHint"></span>
-      </span>
-    </label>
+    <div class="advanced">
+      <h2 data-i18n="advancedTitle"></h2>
+      <label class="consent">
+        <input type="checkbox" id="sendframes">
+        <span>
+          <span class="k" data-i18n="framesLabel"></span>
+          <span class="quiet" data-i18n="framesHint"></span>
+        </span>
+      </label>
+      <p class="quiet" data-i18n="framesDefault"></p>
+    </div>
 
     <div class="share">
       <button id="share-image" data-i18n="shareImage"></button>
