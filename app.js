@@ -499,7 +499,19 @@ const badge = () => `<span class="ai">${esc(t('coachBadge'))}</span>`;
 
 const coachResult = data => (coach && coach.data === data && coach.lang === getLang() && coach.status === 'done' ? coach.result : null);
 
-const wantFrames = () => $('sendframes').checked;
+// Samma val på två ställen: i startvyn, så att den som inte vill skicka bilder slipper mötas av
+// frågan först när resultatet ligger på skärmen, och i resultatvyn, där ett kryss hämtar en ny
+// text utan att klippet analyseras om. De hålls i takt här; sanningen är variabeln, inte rutorna.
+let sendFrames = false;
+const frameBoxes = () => [$('sendframes-start'), $('sendframes')];
+const wantFrames = () => sendFrames;
+
+function setSendFrames(on) {
+  sendFrames = on;
+  for (const box of frameBoxes()) box.checked = on;
+  try { sessionStorage.setItem(FRAMES_KEY, on ? '1' : '0'); } catch { /* privat läge */ }
+}
+
 const chosenAge = () => {
   const v = parseInt($('age').value, 10);
   return Number.isFinite(v) && v >= 5 && v <= 99 ? v : null;
@@ -559,11 +571,13 @@ function renderCoach(data, lang) {
   extra.innerHTML = parts.join('');
 }
 
-$('sendframes').addEventListener('change', e => {
-  try { sessionStorage.setItem(FRAMES_KEY, e.currentTarget.checked ? '1' : '0'); } catch { /* privat läge */ }
-  if (last) { showCoach(last); ensureCoach(last); }
-});
-try { $('sendframes').checked = sessionStorage.getItem(FRAMES_KEY) === '1'; } catch { /* strunt samma */ }
+for (const box of frameBoxes()) {
+  box.addEventListener('change', e => {
+    setSendFrames(e.currentTarget.checked);
+    if (last) { showCoach(last); ensureCoach(last); }   // ny text, samma analys
+  });
+}
+try { setSendFrames(sessionStorage.getItem(FRAMES_KEY) === '1'); } catch { setSendFrames(false); }
 
 // ---------------------------------------------------------------- dela
 //
