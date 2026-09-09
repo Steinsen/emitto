@@ -80,8 +80,7 @@ aldrig hinner svara på en request.
 enheten: sidan får bara prata med jsDelivr (MediaPipes WASM) och storage.googleapis.com
 (pose-modellen). Klippet läses som `blob:` och kan inte skickas någonstans. Workern för
 feedbacktexterna ligger på samma origin som sidan, så `'self'` täcker den – CSP:n behövde inte
-vidgas. Dit går bara siffror, och de bildrutor användaren kryssat i: några beskurna stillbilder,
-aldrig klippet.
+vidgas. Dit går siffrorna och fem beskurna stillbilder på spelaren – aldrig klippet.
 
 ### Nyckeln till modellen
 ```

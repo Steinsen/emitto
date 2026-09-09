@@ -13,9 +13,9 @@ tränare i loopen. Gränssnittet finns på svenska och engelska.
 - Deploy: Cloudflare Workers med static assets (`npx wrangler deploy`), repo-roten som
   assets-katalog. Workern (`main = worker/index.js`) svarar bara på `/api/*`; allt annat
   serveras som statiska filer och fungerar även om API:t ligger nere.
-- **Mätningen och prioriteringen är deterministisk och körs på enheten.** Det enda som lämnar
-  enheten är siffrorna, och – bara om användaren kryssar i det – några beskurna stillbilder ur
-  rutor som redan lästs av. Aldrig klippet. En språkmodell **formulerar** analysen; den väljer
+- **Mätningen och prioriteringen är deterministisk och körs på enheten.** Det som lämnar enheten
+  är siffrorna och fem beskurna stillbilder ur rutor som redan lästs av. **Aldrig klippet** – det
+  är produktlöftet, och det gäller fortfarande. En språkmodell **formulerar** analysen; den väljer
   aldrig vad som ska stå överst. Blir anropet av med det står `rules.js` egna texter kvar, och
   det är inte ett fel utan normalläget.
 
@@ -257,9 +257,18 @@ märks mätvärdena `confidence: 'low'`, liksom mätvärden vars leder MediaPipe
 inte färre – `rescaleTime` delar tiden med faktorn, så 15 rutor/s i ett 4×-klipp är 60 i verklig
 tid. Vid normal fart är alltså allt osäkert mätt, och det ska modellen säga rakt ut.
 
-Bildrutorna är frivilliga och av som standard (kryssruta i resultatvyn, ihågkommen i sessionen).
-De är beskurna stillbilder ur rutor som redan lästs av, via samma `personCrop` som resultatvyn,
-högst fem stycken, högst 480 px. Klippet lämnar aldrig enheten, med eller utan kryss.
+Bildrutorna följer alltid med. De är beskurna stillbilder ur rutor som redan lästs av, via samma
+`personCrop` som resultatvyn, högst fem stycken (de fyra faserna plus landningen), högst 480 px
+på längsta sidan. Klippet lämnar aldrig enheten.
+
+Kryssrutan som lät användaren välja bort dem är borttagen på begäran. Det betyder att bilder på
+spelaren laddas upp utan att någon tillfrågas – vill du ha valet tillbaka är det `collectFrames`
+i `coach.js` och en kryssruta i `index.html` som ska tillbaka, inget annat.
+
+**Den mätta delen visas direkt.** Resultatvyn ritas färdig med `rules.js` texter så snart
+analysen är klar; medan modellen skriver studsar samma boll som i laddningsvyn där texten ska
+stå (`#coachwait`), och den försvinner när texten byts ut – eller när anropet misslyckats. Ett
+spinnande hjul som aldrig tar slut vore värre än ett tyst nej.
 
 Åldern är ett frivilligt tal i startvyn. Den styr bara ordvalen i den AI-formulerade texten –
 aldrig riktvärdena, som gäller alla åldrar.
@@ -314,9 +323,9 @@ riktvärdena – aldrig en rad fel utan att först säga vad som är bra.
 
 ## Att inte göra
 
-- Backend finns nu, men bara för texten: `/api/coach` tar emot siffror och – efter kryss i en
-  ruta – några beskurna stillbilder. Aldrig video, aldrig ledpunktsströmmar, ingen lagring,
-  inget konto, inga loggar om spelaren. Historik och trender är fortfarande steg två.
+- Backend finns nu, men bara för texten: `/api/coach` tar emot siffror och fem beskurna
+  stillbilder. Aldrig video, aldrig ledpunktsströmmar, ingen lagring, inget konto, inga loggar
+  om spelaren. Historik och trender är fortfarande steg två.
 - Inga ramverk eller byggsteg. Om det kliar: fråga först.
 - Ändra inte riktvärden för att få ett visst klipp att "passa". Ändra bara med stöd i klipp
   eller källor, och skriv varför i en kommentar i `rules.js`.

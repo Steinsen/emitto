@@ -32,7 +32,7 @@ const round = (v, dec = 2) => (v == null || Number.isNaN(v) ? null : Number(v.to
 // ---------------------------------------------------------------- vad som skickas
 //
 // Ren funktion, ingen DOM: allt kommer ur det resultat appen redan räknat fram. Bilderna görs
-// separat (collectFrames) och skickas in, eftersom de kräver canvas och samtycke.
+// separat (collectFrames) och skickas in, eftersom de kräver canvas.
 
 export function buildPayload({ lang, age = null, data, frames = [] }) {
   const { prio, ph, speed, times = {}, pr = {}, vis = {} } = data;
@@ -98,7 +98,7 @@ export function buildPayload({ lang, age = null, data, frames = [] }) {
 //
 // Bilderna kommer ur de rutor som redan lästes av under analysen, beskurna runt spelaren med
 // samma personCrop som resultatvyn och delningsbilden. Inga nya sökningar i videon, och aldrig
-// klippet – bara stillbilder, och bara när användaren kryssat i rutan.
+// klippet – bara stillbilder.
 
 export function collectFrames(shots, frameAspect, { max = MAX_FRAMES, px = FRAME_PX, quality = FRAME_QUALITY } = {}) {
   const out = [];

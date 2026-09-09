@@ -152,14 +152,12 @@
   #coachextra h3{font-family:"Barlow Condensed";font-weight:600;font-size:19px;margin:16px 0 4px}
   #coachextra ul{margin:0;padding-left:20px;color:var(--ink-soft);font-size:15px}
   #coachextra li{margin:0 0 4px}
-  .advanced{margin:22px 0 0}
-  .advanced h2{font-size:24px;margin:0 0 10px}
-  .advanced .quiet{margin:8px 0 0}
-  .consent{display:flex;gap:11px;align-items:flex-start;background:var(--court);border-radius:var(--r);
-    padding:14px 16px;margin:0;cursor:pointer}
-  .consent input{flex:none;width:20px;height:20px;margin:2px 0 0;accent-color:var(--ball)}
-  .consent .k{display:block;font-weight:600;font-size:16px}
-  .consent .quiet{display:block;margin-top:3px}
+  /* display:flex vinner över webbläsarens [hidden]{display:none} – utan raden nedan blir bollen
+     kvar och studsar för evigt, också när texten är på plats. */
+  .coachwait{display:flex;align-items:center;gap:12px;margin:14px 0 0}
+  .coachwait[hidden]{display:none}
+  .coachwait .ball{width:30px;height:30px;margin:0;flex:none;animation-duration:.9s}
+  .coachwait .loadmsg{margin:0;font-size:16px}
   .age input{font:inherit;width:5.5em;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}
 
   /* Dela – bilden hamnar i chatten, sidan är för den som vill spara hela rapporten */
@@ -217,21 +215,6 @@
     </div>
     <div class="status" id="error"></div>
 
-    <!-- Valet görs före analysen, så att den som inte vill skicka bilder slipper upptäcka
-         frågan först när resultatet ligger på skärmen. Samma val finns i resultatvyn, och
-         de två kryssrutorna hålls i takt av app.js. -->
-    <div class="advanced">
-      <h2 data-i18n="advancedTitle"></h2>
-      <label class="consent">
-        <input type="checkbox" id="sendframes-start">
-        <span>
-          <span class="k" data-i18n="framesLabel"></span>
-          <span class="quiet" data-i18n="framesHint"></span>
-        </span>
-      </label>
-      <p class="quiet" data-i18n="framesDefault"></p>
-    </div>
-
     <div class="examples">
       <h2 data-i18n="examplesTitle"></h2>
       <div class="exlist" id="examples"></div>
@@ -263,24 +246,24 @@
 
     <h2 data-i18n="workTitle"></h2>
     <p class="quiet" id="goodnote"></p>
+    <!-- Den mätta delen står färdig direkt. Bollen studsar bara medan modellen skriver, och
+         är borta i samma ögonblick som texten byts ut. -->
+    <div class="coachwait" id="coachwait" hidden>
+      <svg class="ball" viewBox="0 0 48 48" role="img" aria-hidden="true">
+        <circle cx="24" cy="24" r="21" fill="#FF6A2B"/>
+        <g fill="none" stroke="#10262E" stroke-width="2">
+          <circle cx="24" cy="24" r="21"/>
+          <path d="M3 24h42M24 3v42M9 9c8 6 8 24 0 30M39 9c-8 6-8 24 0 30"/>
+        </g>
+      </svg>
+      <p class="loadmsg" data-i18n="coachWorking"></p>
+    </div>
     <p class="quiet" id="coachnote"></p>
     <ol class="work" id="work"></ol>
 
     <!-- Efter släppet. Egen ruta, aldrig en rad i listan: listan är rules.js. -->
     <div class="after" id="after" hidden></div>
     <div id="coachextra"></div>
-
-    <div class="advanced">
-      <h2 data-i18n="advancedTitle"></h2>
-      <label class="consent">
-        <input type="checkbox" id="sendframes">
-        <span>
-          <span class="k" data-i18n="framesLabel"></span>
-          <span class="quiet" data-i18n="framesHint"></span>
-        </span>
-      </label>
-      <p class="quiet" data-i18n="framesDefault"></p>
-    </div>
 
     <div class="share">
       <button id="share-image" data-i18n="shareImage"></button>
