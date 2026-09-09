@@ -1,10 +1,28 @@
 # Cloudflare Workers med static assets. Ingen build – repo-roten är sajten.
 # Deploy: npx wrangler deploy
+#
+# Workern ligger på samma origin som sidan, så connect-src i _headers förblir 'self' – inget
+# nytt hål att öppna i CSP:n. Nyckeln sätts som secret, aldrig i den här filen:
+#   npx wrangler secret put ANTHROPIC_API_KEY
 name = "emitto"
+main = "worker/index.js"
 compatibility_date = "2026-09-03"
 
 [assets]
 directory = "./"
-# När Workern för feedbacktexterna kommer: lägg till main = "worker.js" över
-# [assets]. Då ligger API:t på samma origin som sidan, och connect-src i
-# _headers kan förbli 'self' – inget nytt hål att öppna i CSP:n.
+binding = "ASSETS"
+# Bara /api/* går till koden. Allt annat är statiska filer och serveras utan att Workern ens
+# vaknar – sajten fungerar alltså precis som förut, också om API:t ligger nere.
+run_worker_first = ["/api/*"]
+
+[vars]
+# Modellen kan bytas utan att koda om. Nyckeln är en secret, inte en var.
+ANTHROPIC_MODEL = "claude-sonnet-5"
+
+# Ett tak per IP på /api/coach. namespace_id är ett eget nummer per binding i det här projektet,
+# period måste vara 10 eller 60 sekunder.
+[[unsafe.bindings]]
+name = "COACH_RATE"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }

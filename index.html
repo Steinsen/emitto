@@ -140,6 +140,25 @@
   .allclear{background:var(--ink);color:#fff;border-radius:var(--r);padding:20px 22px;margin:14px 0 0}
   .allclear h3{font-family:"Barlow Condensed";font-weight:600;font-size:30px;margin:0 0 10px}
   .allclear p{color:#DCE5E9}
+  /* AI-formulerat – lågmält och alltid märkt. Texten kan bytas ut, ordningen aldrig. */
+  .ai{font-family:"Barlow Condensed";font-weight:600;font-size:14px;color:var(--ink-soft);
+    border:1px solid var(--line);border-radius:20px;padding:1px 9px;white-space:nowrap;vertical-align:2px}
+  .work .head .ai{margin-left:auto}
+  .after{border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin:20px 0 0}
+  .after h3{font-family:"Barlow Condensed";font-weight:600;font-size:24px;margin:0 0 8px;display:flex;gap:10px;align-items:baseline}
+  .after p{margin:0 0 8px}
+  .after p:last-child{margin-bottom:0}
+  #coachextra{margin-top:18px}
+  #coachextra h3{font-family:"Barlow Condensed";font-weight:600;font-size:19px;margin:16px 0 4px}
+  #coachextra ul{margin:0;padding-left:20px;color:var(--ink-soft);font-size:15px}
+  #coachextra li{margin:0 0 4px}
+  .consent{display:flex;gap:11px;align-items:flex-start;background:var(--court);border-radius:var(--r);
+    padding:14px 16px;margin:22px 0 0;cursor:pointer}
+  .consent input{flex:none;width:20px;height:20px;margin:2px 0 0;accent-color:var(--ball)}
+  .consent .k{display:block;font-weight:600;font-size:16px}
+  .consent .quiet{display:block;margin-top:3px}
+  .age input{font:inherit;width:5.5em;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}
+
   /* Dela – bilden hamnar i chatten, sidan är för den som vill spara hela rapporten */
   .share{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 8px}
   .share button{flex:1 1 auto}
@@ -185,6 +204,13 @@
         <div class="seg" id="speed-start"></div>
         <span class="k" data-i18n="speedHint"></span>
       </div>
+      <!-- Åldern styr bara ordvalet i den AI-formulerade texten. Riktvärdena i rules.js
+           gäller alla åldrar och ändras inte av den här siffran. -->
+      <div class="speed age">
+        <label class="k" for="age" data-i18n="ageLabel"></label>
+        <input id="age" type="number" min="5" max="99" step="1" inputmode="numeric">
+        <span class="k" data-i18n="ageHint"></span>
+      </div>
     </div>
     <div class="status" id="error"></div>
 
@@ -219,7 +245,20 @@
 
     <h2 data-i18n="workTitle"></h2>
     <p class="quiet" id="goodnote"></p>
+    <p class="quiet" id="coachnote"></p>
     <ol class="work" id="work"></ol>
+
+    <!-- Efter släppet. Egen ruta, aldrig en rad i listan: listan är rules.js. -->
+    <div class="after" id="after" hidden></div>
+    <div id="coachextra"></div>
+
+    <label class="consent">
+      <input type="checkbox" id="sendframes">
+      <span>
+        <span class="k" data-i18n="framesLabel"></span>
+        <span class="quiet" data-i18n="framesHint"></span>
+      </span>
+    </label>
 
     <div class="share">
       <button id="share-image" data-i18n="shareImage"></button>

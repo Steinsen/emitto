@@ -14,7 +14,9 @@
   # connect-src listar de enda ställen sidan får prata med, och klippet (blob:) kan
   # inte skickas någonstans. Vidga inte den raden utan att tänka efter.
   #   script-src   app.js (self) + MediaPipe från jsDelivr, 'wasm-unsafe-eval' för WASM
-  #   connect-src  jsDelivr (wasm-binären) + storage.googleapis.com (pose-modellen)
+  #   connect-src  jsDelivr (wasm-binären) + storage.googleapis.com (pose-modellen) + 'self'
+  #                för /api/coach, som ligger på samma origin. Att API:t ligger i samma
+  #                Worker är just därför: ingen ny rad att öppna här.
   #   media-src    blob: – klippet läses som object-URL
   #   style-src    'unsafe-inline' – all CSS ligger i <style> i index.html
   Content-Security-Policy: default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'

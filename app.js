@@ -1,11 +1,13 @@
 // app.js – laddar klippet, kör MediaPipe Pose i webbläsaren, ritar resultatet.
-// Videon lämnar aldrig telefonen. Bara siffror skulle behöva skickas till en Worker senare.
+// Videon lämnar aldrig telefonen. Till Workern går bara siffror – och de bildrutor användaren
+// kryssat i, som beskurna stillbilder. Se coach.js.
 import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
-import { pickSide, signals, findPhases, metrics, estimateSpeed, rescaleTime } from './analysis.js';
+import { pickSide, signals, findPhases, metrics, estimateSpeed, rescaleTime, postRelease, visibilityByMetric } from './analysis.js';
 import { prioritize, issueList, allClear, goodNote, labelOf, refOf, formatValue, METRIC_PHASE } from './rules.js';
 import { t, getLang, setLang, applyStatic, LANGS } from './i18n.js';
 import { drawFrame, personCrop, STATUS_COLOR, ARC } from './draw.js';
 import { shareImage, shareReport, deliver, stamp } from './share.js';
+import { buildPayload, collectFrames, requestCoach, merge } from './coach.js';
 
 const $ = id => document.getElementById(id);
 const video = $('video'), file = $('file');
@@ -281,21 +283,35 @@ async function compute(frames, side, aspect) {
   const ph = findPhases(sig);
   const m = metrics(sig, ph);
 
+  // Måtten efter släppet. De har inga riktvärden och går inte in i prioriteringen – de är
+  // underlag för den AI-formulerade texten, som får bedöma dem inom en ram i worker/prompt.js.
+  const pr = postRelease(sig, ph);
+
   // Fasernas bilder är redan tagna, ur samma avläsning som ledpunkterna. Här ritas de
   // bara upp – videon rörs inte längre, så ett hastighetsbyte kostar ingen sökning alls.
   $('loadmsg').textContent = t('loadingFrames');
-  const shots = [];
-  for (const p of PHASES) {
-    const idx = ph[p.key];
+  const shotAt = async (idx, p) => {
     const c = document.createElement('canvas');
     c.height = PHASE_H;
     c.width = Math.round(PHASE_H * aspect);
     c.getContext('2d').drawImage(await decode(frames[idx].shot), 0, 0, c.width, c.height);
-    shots.push({ ...p, canvas: c, lm: frames[idx].lm, time: sig[idx].t });
-  }
+    return { ...p, canvas: c, lm: frames[idx].lm, time: sig[idx].t };
+  };
+  const shots = [];
+  for (const p of PHASES) shots.push(await shotAt(ph[p.key], p));
+  // Landningen visas inte i fasremsan – den hör inte till de fyra faserna – men den får följa
+  // med som bild när användaren valt att skicka rutor.
+  const landingShot = pr.landing >= 0 ? await shotAt(pr.landing, { key: 'landing' }) : null;
   bar.style.width = '100%';
 
-  last = { frames, side, aspect, shots, m, ph, speed, prio: prioritize(m) };
+  const times = {};
+  for (const k of ['lowest', 'set', 'release', 'takeoff', 'apex', 'follow']) {
+    times[k] = ph[k] >= 0 ? sig[ph[k]].t : null;
+  }
+
+  coach = null;   // nytt resultat: den AI-formulerade texten hör till det gamla
+  last = { frames, side, aspect, shots, landingShot, m, ph, speed, prio: prioritize(m),
+    times, pr, vis: visibilityByMetric(frames, ph, side) };
   renderResult(last);
   show('result');
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -390,37 +406,7 @@ function renderResult(data) {
   }
   buildDots(wrap);
 
-  // Att jobba på
-  const issues = issueList(prio, lang, 5);
-  $('goodnote').textContent = goodNote(prio, lang);
-  const ol = $('work');
-  ol.innerHTML = '';
-  if (!issues.length) {
-    const a = allClear(lang);
-    ol.innerHTML = `<div class="allclear"><h3>${a.title}</h3><p>${a.why}</p><p>${a.drill}</p></div>`;
-  } else {
-    issues.forEach((it, i) => {
-      const li = document.createElement('li');
-      const head = document.createElement('button');
-      head.type = 'button';
-      head.className = 'head';
-      head.setAttribute('aria-expanded', 'false');
-      head.innerHTML = `<span class="rank">${i + 1}</span><span class="label">${it.title}</span><span class="plus" aria-hidden="true"></span>`;
-      const body = document.createElement('div');
-      body.className = 'body';
-      body.hidden = true;
-      body.innerHTML = `<p>${it.why}</p>
-        <p class="drill"><strong>${t('drill')}:</strong> ${it.drill}</p>
-        <p class="pep">${it.pep}</p>`;
-      head.addEventListener('click', () => {
-        const on = head.getAttribute('aria-expanded') === 'false';
-        head.setAttribute('aria-expanded', String(on));
-        body.hidden = !on;
-      });
-      li.append(head, body);
-      ol.appendChild(li);
-    });
-  }
+  renderWork(data, lang);
 
   // Alla mätvärden
   $('metrics').innerHTML = prio.graded.map(g => `<li>
@@ -434,7 +420,47 @@ function renderResult(data) {
 
   // Förbehåll
   $('caveat').textContent = caveatNote(data);
+  renderCoach(data, lang);
   prepareShare(data);
+  ensureCoach(data);
+}
+
+// Att jobba på. Ordningen kommer alltid från rules.js. Den AI-formulerade texten läggs bara
+// ovanpå de poster som har samma nyckel – merge() i coach.js gör inget annat.
+//
+// Egen funktion därför att den är det enda som ändras när workern svarar. Att rita om hela
+// resultatvyn då skulle stänga fasernas vinkelvyer och göra om delningsbilden i onödan.
+function renderWork(data, lang) {
+  const issues = merge(issueList(data.prio, lang, 5), coachResult(data));
+  $('goodnote').textContent = goodNote(data.prio, lang);
+  const ol = $('work');
+  ol.innerHTML = '';
+  if (!issues.length) {
+    const a = allClear(lang);
+    ol.innerHTML = `<div class="allclear"><h3>${esc(a.title)}</h3><p>${esc(a.why)}</p><p>${esc(a.drill)}</p></div>`;
+    return;
+  }
+  issues.forEach((it, i) => {
+    const li = document.createElement('li');
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'head';
+    head.setAttribute('aria-expanded', 'false');
+    head.innerHTML = `<span class="rank">${i + 1}</span><span class="label">${esc(it.title)}</span>${it.ai ? badge() : ''}<span class="plus" aria-hidden="true"></span>`;
+    const body = document.createElement('div');
+    body.className = 'body';
+    body.hidden = true;
+    body.innerHTML = `${it.what ? `<p>${esc(it.what)}</p>` : ''}<p>${esc(it.why)}</p>
+      <p class="drill"><strong>${esc(t('drill'))}:</strong> ${esc(it.drill)}</p>
+      <p class="pep">${esc(it.pep)}</p>`;
+    head.addEventListener('click', () => {
+      const on = head.getAttribute('aria-expanded') === 'false';
+      head.setAttribute('aria-expanded', String(on));
+      body.hidden = !on;
+    });
+    li.append(head, body);
+    ol.appendChild(li);
+  });
 }
 
 // De två meningarna som sammanfattar hur resultatet ska läsas. Egna funktioner därför att
@@ -453,6 +479,91 @@ function caveatNote({ m, ph, side }) {
   const extra = t('extra')(m.hipVel.toFixed(0), lag, ph.fps.toFixed(0));
   return t('caveat')(t(side === 'right' ? 'sideRight' : 'sideLeft'), extra);
 }
+
+// ---------------------------------------------------------------- AI-formulerad text
+//
+// Fallbacken är normalläget, inte undantaget: resultatvyn ritas färdig med rules.js egna texter,
+// och först när workern svarat byts orden ut – märkta "AI-formulerad". Går anropet inte igenom
+// står texten kvar och det enda som syns är en nedtonad rad. Offline fungerar appen precis som
+// förut, och ordningen i listan kommer aldrig härifrån.
+//
+// Bildrutorna skickas bara om användaren kryssat i rutan. De är beskurna stillbilder, inte
+// klippet – klippet lämnar aldrig enheten, och det gäller oavsett kryssrutan.
+
+const FRAMES_KEY = 'emitto.frames';   // ihågkommet i sessionen, aldrig längre än så
+
+let coach = null;   // { data, lang, frames, status: 'working'|'done'|'failed', result }
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const badge = () => `<span class="ai">${esc(t('coachBadge'))}</span>`;
+
+const coachResult = data => (coach && coach.data === data && coach.lang === getLang() && coach.status === 'done' ? coach.result : null);
+
+const wantFrames = () => $('sendframes').checked;
+const chosenAge = () => {
+  const v = parseInt($('age').value, 10);
+  return Number.isFinite(v) && v >= 5 && v <= 99 ? v : null;
+};
+
+function framesFor(data) {
+  return data.landingShot ? [...data.shots, data.landingShot] : data.shots;
+}
+
+async function ensureCoach(data) {
+  const lang = getLang(), frames = wantFrames();
+  if (coach && coach.data === data && coach.lang === lang && coach.frames === frames) return;
+  const job = { data, lang, frames, status: 'working', result: null };
+  coach = job;
+  renderCoach(data, lang);
+  try {
+    const jpegs = frames ? collectFrames(framesFor(data), data.aspect) : [];
+    job.result = await requestCoach(buildPayload({ lang, age: chosenAge(), data, frames: jpegs }));
+    job.status = 'done';
+  } catch {
+    job.status = 'failed';   // koden säger inget användaren kan göra något åt
+  }
+  if (coach === job && last === data) showCoach(data);
+}
+
+// Ritar om det som beror på svaret, och bara det.
+function showCoach(data) {
+  renderWork(data, getLang());
+  renderCoach(data, getLang());
+}
+
+function renderCoach(data, lang) {
+  const job = coach && coach.data === data && coach.lang === lang ? coach : null;
+  const res = job && job.status === 'done' ? job.result : null;
+  const note = $('coachnote'), box = $('after'), extra = $('coachextra');
+
+  note.innerHTML = !job || job.status === 'working' ? esc(t('coachWorking'))
+    : job.status === 'failed' ? esc(t('coachFailed'))
+    : `${badge()} ${esc(res.summary)}`;
+
+  box.hidden = !res?.after;
+  box.innerHTML = res?.after
+    ? `<h3>${esc(t('afterTitle'))} ${badge()}</h3>
+       <p><strong>${esc(res.after.title)}</strong></p>
+       <p>${esc(res.after.text)}</p>
+       <p class="quiet">${esc(t('afterNote'))}</p>`
+    : '';
+
+  const list = (title, items, note2) => `<h3>${esc(title)}</h3>${note2 ? `<p class="quiet">${esc(note2)}</p>` : ''}
+    <ul>${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+  const parts = [];
+  if (res?.strengths?.length) parts.push(list(t('strengthsTitle'), res.strengths));
+  if (res?.observations?.length) parts.push(list(t('observationsTitle'), res.observations, t('observationsNote')));
+  if (res?.uncertainties?.length) parts.push(list(t('uncertaintiesTitle'), res.uncertainties));
+  if (res?.disagreement) parts.push(`<h3>${esc(t('disagreementTitle'))}</h3><p class="quiet">${esc(res.disagreement)}</p>`);
+  if (res) parts.push(`<p class="quiet">${esc(t('coachNote'))}</p>`);
+  extra.innerHTML = parts.join('');
+}
+
+$('sendframes').addEventListener('change', e => {
+  try { sessionStorage.setItem(FRAMES_KEY, e.currentTarget.checked ? '1' : '0'); } catch { /* privat läge */ }
+  if (last) { showCoach(last); ensureCoach(last); }
+});
+try { $('sendframes').checked = sessionStorage.getItem(FRAMES_KEY) === '1'; } catch { /* strunt samma */ }
 
 // ---------------------------------------------------------------- dela
 //

@@ -29,6 +29,19 @@ export const METRIC_PHASE = {
   tLowToRelease: 'release', kneeRelease: 'release', releaseHeight: 'release',
 };
 
+// Riktvärdena i maskinform, för det som ska ut ur appen (coach.js → workern → modellen).
+// Enheterna är kodnamn, inte etiketter: de ska inte översättas, och de är samma tal som REF
+// räknar med – grader och sekunder, inte millisekunder. Samma REF som graderingen och texterna
+// läser, så att ingen andra uppsättning gränser kan uppstå.
+const UNIT = {
+  kneeMin: 'deg', tLowToRelease: 's', kneeRelease: 'deg',
+  trunkLowest: 'deg', elbowSet: 'deg', releaseHeight: 'bodylength',
+};
+
+export const METRIC_KEYS = [...PRIORITY];
+export const metricSpec = key =>
+  (REF[key] ? { ok: [...REF[key].ok], tol: REF[key].tol, unit: UNIT[key] } : null);
+
 export const refOf = key => REF[key];
 export const labelOf = (key, lang) => REF[key].label[lang];
 export const unitIn = (key, lang) => (typeof REF[key].unit === 'string' ? REF[key].unit : REF[key].unit[lang]);

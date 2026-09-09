@@ -16,7 +16,15 @@ samples
 # Ledpunkter för testerna. Hör hemma i repot, men inte på domänen.
 fixtures
 
-# Dokumentation och konfiguration hör inte hemma på domänen.
+# Dokumentation, tester och konfiguration hör inte hemma på domänen.
 CLAUDE.md
 README.md
 wrangler.toml
+test.mjs
+test-units.mjs
+
+# Workern är kod, inte innehåll. Utan de här raderna publiceras systemprompten och
+# valideringen som statiska filer på domänen.
+worker
+.dev.vars
+.dev.vars.example
