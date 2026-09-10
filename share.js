@@ -14,7 +14,7 @@
 
 import { t, getLang } from './i18n.js';
 import { issueList as rulesIssues, goodNote, allClear, labelOf, refOf, formatValue, METRIC_PHASE } from './rules.js';
-import { drawFrame, personCrop, roundRect, STATUS_COLOR, ARC } from './draw.js';
+import { drawFrame, personCrop, roundRect, ARC } from './draw.js';
 import { merge } from './coach.js';
 
 // Listan är rules.js ordning, med modellens ord ovanpå där nyckeln stämmer – samma merge som
@@ -22,8 +22,7 @@ import { merge } from './coach.js';
 const issueList = (prio, lang, max, coach) => merge(rulesIssues(prio, lang, max), coach || null);
 
 const W = 1080, PAD = 56, GAP = 22;
-const INK = '#10262E', SOFT = '#4F6169', LINE = '#D8E0E3', PAPER = '#FFFFFF';
-const BALL = '#FF6A2B', COURT = '#EAF0F2', PEACH = '#FFB48E';
+const INK = '#10262E', SOFT = '#4F6169', PAPER = '#FFFFFF', PEACH = '#FFB48E';
 const COND = '"Barlow Condensed", "Arial Narrow", sans-serif';
 const BODY = 'Barlow, system-ui, sans-serif';
 const font = (weight, size, family = BODY) => `${weight} ${size}px ${family}`;
@@ -99,9 +98,13 @@ function wrap(ctx, text, maxWidth) {
 
 // ---------------------------------------------------------------- bilden
 //
-// Höjden är inte känd i förväg: den beror på hur många rader listan får och hur texten
-// bryts. Därför mäts allt först mot samma canvas som sedan ritas – varje del lämnar sin
-// höjd och en ritfunktion – och först när summan är klar sätts canvasens höjd.
+// Bilden är faserna med vinklarna, ingenting annat. Beskrivningen delas för sig: en bild med
+// hela rapporten i blev tre skärmar hög, komprimerades sönder i chattapparna och gick inte att
+// citera eller svara på. Den som vill ha orden får dem som text.
+//
+// Höjden är inte känd i förväg – den beror på hur bildrutorna bryts – så allt mäts först mot
+// samma canvas som sedan ritas: varje del lämnar sin höjd och en ritfunktion, och först när
+// summan är klar sätts canvasens höjd.
 
 export async function shareImage(data, notes) {
   const { shots, side, aspect, prio } = data;
@@ -174,108 +177,8 @@ export async function shareImage(data, notes) {
     });
   }
 
-  // Att jobba på. Bilden är det som faktiskt hamnar i en chatt, och en bildtext överlever inte
-  // vägen dit – därför bär bilden hela texten: varje punkt med sitt varför, ettan med sin övning.
-  heading(t('workTitle'));
-  quiet(goodNote(prio, lang));
-  if (data.coach?.summary) quiet(data.coach.summary, 25, INK);
-  const issues = issueList(prio, lang, 5, data.coach);
-  if (!issues.length) {
-    const a = allClear(lang);
-    m.font = font(600, 34, COND);
-    const title = wrap(m, a.title, inner - 44);
-    m.font = font(400, 24);
-    const why = wrap(m, a.why, inner - 44);
-    const h = 30 + title.length * 40 + why.length * 34 + 26;
-    add(h + 12, (ctx, at) => {
-      ctx.fillStyle = INK;
-      roundRect(ctx, PAD, at, inner, h, 14);
-      ctx.fill();
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = '#fff'; ctx.font = font(600, 34, COND);
-      title.forEach((l, i) => ctx.fillText(l, PAD + 22, at + 24 + i * 40));
-      ctx.fillStyle = '#DCE5E9'; ctx.font = font(400, 24);
-      why.forEach((l, i) => ctx.fillText(l, PAD + 22, at + 30 + title.length * 40 + i * 34));
-    });
-  } else {
-    issues.forEach((it, i) => {
-      const textW = inner - 60;
-      m.font = font(600, 28);
-      const title = wrap(m, it.title, textW);
-      m.font = font(400, 24);
-      const why = wrap(m, [i === 0 ? it.what : null, it.why].filter(Boolean).join(' '), textW);
-      const drill = i === 0 ? wrap(m, `${t('drill')}: ${it.drill}`, textW) : [];
-      const bodyH = why.length * 32 + (drill.length ? 6 + drill.length * 32 : 0);
-      const h = 20 + title.length * 38 + (bodyH ? 6 + bodyH : 0) + 18;
-      add(h, (ctx, at) => {
-        ctx.fillStyle = i === 0 ? BALL : COURT;
-        ctx.beginPath();
-        ctx.arc(PAD + 17, at + 34, 17, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = i === 0 ? '#fff' : SOFT;
-        ctx.font = font(600, 24, COND);
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(String(i + 1), PAD + 17, at + 35);
-        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-        ctx.fillStyle = INK; ctx.font = font(600, 28);
-        title.forEach((l, k) => ctx.fillText(l, PAD + 60, at + 20 + k * 38));
-        ctx.fillStyle = SOFT; ctx.font = font(400, 24);
-        const top = at + 26 + title.length * 38;
-        why.forEach((l, k) => ctx.fillText(l, PAD + 60, top + k * 32));
-        drill.forEach((l, k) => ctx.fillText(l, PAD + 60, top + (why.length + k) * 32 + 6));
-        ctx.strokeStyle = LINE; ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(PAD, at + h - 0.5); ctx.lineTo(W - PAD, at + h - 0.5); ctx.stroke();
-      });
-    });
-  }
-
-  // Efter släppet: egen ruta, som i appen. Aldrig en rad i listan – listan är rules.js.
-  if (data.coach?.after) {
-    const a = data.coach.after;
-    const textW = inner - 44;
-    m.font = font(600, 28, COND);
-    const head = wrap(m, `${t('afterTitle')} – ${a.title}`, textW);
-    m.font = font(400, 24);
-    const body = wrap(m, a.text, textW);
-    const h = 22 + head.length * 34 + 6 + body.length * 32 + 20;
-    add(h + 16, (ctx, at) => {
-      ctx.strokeStyle = LINE; ctx.lineWidth = 1;
-      roundRect(ctx, PAD + 0.5, at + 0.5, inner - 1, h - 1, 14);
-      ctx.stroke();
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = INK; ctx.font = font(600, 28, COND);
-      head.forEach((l, i) => ctx.fillText(l, PAD + 22, at + 20 + i * 34));
-      ctx.fillStyle = SOFT; ctx.font = font(400, 24);
-      body.forEach((l, i) => ctx.fillText(l, PAD + 22, at + 28 + head.length * 34 + i * 32));
-    });
-  }
-
-  // Alla mätvärden, med riktvärdet bredvid. Det är den här delen en tränare läser först.
-  add(18, () => {});
-  heading(t('detailsTitle'));
-  for (const g of prio.graded) {
-    add(86, (ctx, at) => {
-      ctx.fillStyle = STATUS_COLOR[g.status];
-      ctx.beginPath(); ctx.arc(PAD + 7, at + 26, 7, 0, Math.PI * 2); ctx.fill();
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = INK; ctx.font = font(600, 26);
-      ctx.fillText(labelOf(g.key, lang), PAD + 30, at + 12);
-      ctx.fillStyle = SOFT; ctx.font = font(400, 21);
-      const r = refOf(g.key);
-      ctx.fillText(`${t('reference')} ${formatValue(g.key, r.ok[0], lang)}–${formatValue(g.key, r.ok[1], lang)}`, PAD + 30, at + 46);
-      ctx.fillStyle = INK; ctx.font = font(600, 34, COND);
-      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-      ctx.fillText(formatValue(g.key, g.value, lang), W - PAD, at + 34);
-      ctx.textAlign = 'left';
-      ctx.strokeStyle = LINE; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(PAD, at + 85.5); ctx.lineTo(W - PAD, at + 85.5); ctx.stroke();
-    });
-  }
-
-  add(20, () => {});
+  add(14, () => {});
   quiet(notes.speed, 21);
-  if (notes.caveat) quiet(notes.caveat, 21);
   quiet(`${t('footer')} · ${location.host}`, 21);
 
   canvas.height = Math.round(y + PAD);

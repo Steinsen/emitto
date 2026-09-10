@@ -28,7 +28,7 @@ av rutor som redan är avlästa – klippet laddas fortfarande aldrig upp.
 - `index.html` – gränssnitt och stil, de tre vyerna
 - `app.js` – laddar klipp, kör MediaPipe ruta för ruta, ritar faser och listor
 - `draw.js` – ritar en fas: bilden, skelettet och vinkelbågarna (används av både vyn och delningen)
-- `share.js` – delningsbild (JPEG) och rapport som ren text
+- `share.js` – delningsbild med faserna (JPEG) och rapporten som ren text
 - `analysis.js` – hittar faserna (lägsta läge, set point, släpp, frånskjut, följning) och räknar mätvärden
 - `rules.js` – riktvärden, prioriteringslogik, feedbacktexter på båda språken. **Det är här du justerar.**
 - `coach.js` – bygger anropet till `/api/coach` och lägger svaret ovanpå listan
