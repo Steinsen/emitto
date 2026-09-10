@@ -13,8 +13,13 @@
 // gränssnittets ord från i18n.js, och faserna ritas av samma kod som skärmen använder.
 
 import { t, getLang } from './i18n.js';
-import { issueList, goodNote, allClear, labelOf, refOf, formatValue, METRIC_PHASE } from './rules.js';
+import { issueList as rulesIssues, goodNote, allClear, labelOf, refOf, formatValue, METRIC_PHASE } from './rules.js';
 import { drawFrame, personCrop, roundRect, STATUS_COLOR, ARC } from './draw.js';
+import { merge } from './coach.js';
+
+// Listan är rules.js ordning, med modellens ord ovanpå där nyckeln stämmer – samma merge som
+// resultatvyn använder, så att det som delas är ordagrant det som visades på skärmen.
+const issueList = (prio, lang, max, coach) => merge(rulesIssues(prio, lang, max), coach || null);
 
 const W = 1080, PAD = 56, GAP = 22;
 const INK = '#10262E', SOFT = '#4F6169', LINE = '#D8E0E3', PAPER = '#FFFFFF';
@@ -169,10 +174,12 @@ export async function shareImage(data, notes) {
     });
   }
 
-  // Att jobba på. Ettan får med sin övning – resten är rubriker, hela texten står i sidan.
+  // Att jobba på. Bilden är det som faktiskt hamnar i en chatt, och en bildtext överlever inte
+  // vägen dit – därför bär bilden hela texten: varje punkt med sitt varför, ettan med sin övning.
   heading(t('workTitle'));
   quiet(goodNote(prio, lang));
-  const issues = issueList(prio, lang, 5);
+  if (data.coach?.summary) quiet(data.coach.summary, 25, INK);
+  const issues = issueList(prio, lang, 5, data.coach);
   if (!issues.length) {
     const a = allClear(lang);
     m.font = font(600, 34, COND);
@@ -196,8 +203,10 @@ export async function shareImage(data, notes) {
       m.font = font(600, 28);
       const title = wrap(m, it.title, textW);
       m.font = font(400, 24);
+      const why = wrap(m, [i === 0 ? it.what : null, it.why].filter(Boolean).join(' '), textW);
       const drill = i === 0 ? wrap(m, `${t('drill')}: ${it.drill}`, textW) : [];
-      const h = 20 + title.length * 38 + (drill.length ? 6 + drill.length * 32 : 0) + 18;
+      const bodyH = why.length * 32 + (drill.length ? 6 + drill.length * 32 : 0);
+      const h = 20 + title.length * 38 + (bodyH ? 6 + bodyH : 0) + 18;
       add(h, (ctx, at) => {
         ctx.fillStyle = i === 0 ? BALL : COURT;
         ctx.beginPath();
@@ -211,11 +220,34 @@ export async function shareImage(data, notes) {
         ctx.fillStyle = INK; ctx.font = font(600, 28);
         title.forEach((l, k) => ctx.fillText(l, PAD + 60, at + 20 + k * 38));
         ctx.fillStyle = SOFT; ctx.font = font(400, 24);
-        drill.forEach((l, k) => ctx.fillText(l, PAD + 60, at + 26 + title.length * 38 + k * 32));
+        const top = at + 26 + title.length * 38;
+        why.forEach((l, k) => ctx.fillText(l, PAD + 60, top + k * 32));
+        drill.forEach((l, k) => ctx.fillText(l, PAD + 60, top + (why.length + k) * 32 + 6));
         ctx.strokeStyle = LINE; ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(PAD, at + h - 0.5); ctx.lineTo(W - PAD, at + h - 0.5); ctx.stroke();
       });
+    });
+  }
+
+  // Efter släppet: egen ruta, som i appen. Aldrig en rad i listan – listan är rules.js.
+  if (data.coach?.after) {
+    const a = data.coach.after;
+    const textW = inner - 44;
+    m.font = font(600, 28, COND);
+    const head = wrap(m, `${t('afterTitle')} – ${a.title}`, textW);
+    m.font = font(400, 24);
+    const body = wrap(m, a.text, textW);
+    const h = 22 + head.length * 34 + 6 + body.length * 32 + 20;
+    add(h + 16, (ctx, at) => {
+      ctx.strokeStyle = LINE; ctx.lineWidth = 1;
+      roundRect(ctx, PAD + 0.5, at + 0.5, inner - 1, h - 1, 14);
+      ctx.stroke();
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = INK; ctx.font = font(600, 28, COND);
+      head.forEach((l, i) => ctx.fillText(l, PAD + 22, at + 20 + i * 34));
+      ctx.fillStyle = SOFT; ctx.font = font(400, 24);
+      body.forEach((l, i) => ctx.fillText(l, PAD + 22, at + 28 + head.length * 34 + i * 32));
     });
   }
 
@@ -243,6 +275,7 @@ export async function shareImage(data, notes) {
 
   add(20, () => {});
   quiet(notes.speed, 21);
+  if (notes.caveat) quiet(notes.caveat, 21);
   quiet(`${t('footer')} · ${location.host}`, 21);
 
   canvas.height = Math.round(y + PAD);
@@ -253,140 +286,50 @@ export async function shareImage(data, notes) {
   return new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.92));
 }
 
-// ---------------------------------------------------------------- sidan
+// ---------------------------------------------------------------- texten
+//
+// Samma innehåll som bilden, men som ren text: den går att klistra in i en chatt, svara på och
+// citera. Bilden är förstahandsvalet eftersom den syns direkt; texten finns för den som hellre
+// skriver tillbaka än tittar.
+//
+// Ingen markdown, inga tecken som ser trasiga ut i en chattbubbla. Raderna hålls korta.
 
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const line = (label, value) => `${label}: ${value}`;
 
-// Fasbilden som den ser ut i appen med vinklarna framme, som data-URI. JPEG i kortstorlek:
-// fyra rutor blir en bråkdel av vad full upplösning hade kostat, och sidan ska kunna
-// skickas som bilaga.
-function phaseImage(shot, side, arcs, aspect) {
-  const src = shot.canvas;
-  const crop = personCrop(shot.lm, aspect, 3 / 4);   // samma utsnitt som i bilden
-  const c = document.createElement('canvas');
-  c.width = Math.round(crop.w * src.width);
-  c.height = Math.round(crop.h * src.height);
-  drawFrame(c.getContext('2d'), src, { x: 0, y: 0, w: c.width, h: c.height }, shot.lm, side, arcs, crop);
-  return c.toDataURL('image/jpeg', 0.85);
-}
-
-// En fristående sida: allt innehåll, inga externa anrop, inga skript. Typsnitten kan inte
-// följa med utan att filen växer med en halv megabyte, så den faller tillbaka på
-// systemets – färgerna och strukturen bär ändå.
-export async function shareReport(data, notes) {
-  const { shots, side, aspect, prio } = data;
+export function reportText(data, notes) {
+  const { prio, coach } = data;
   const lang = getLang();
-  const groups = byPhase(prio);
-  const issues = issueList(prio, lang, 5);
-  let logo = '';
-  try { logo = await logoSource(); } catch { logo = '<strong>Emitto</strong>'; }
+  const out = [`Emitto – ${t('tag')}`, dateText(lang), '', notes.speed, ''];
 
-  const phases = shots.map(shot => {
-    const graded = groups[shot.key] || [];
-    const rows = graded.length
-      ? graded.map(g => `<li><i style="background:${STATUS_COLOR[g.status]}"></i><span>${esc(labelOf(g.key, lang))}
-          <em>${esc(t('reference'))} ${esc(formatValue(g.key, refOf(g.key).ok[0], lang))}–${esc(formatValue(g.key, refOf(g.key).ok[1], lang))}</em></span>
-          <b>${esc(formatValue(g.key, g.value, lang))}</b></li>`).join('')
-      : `<li class="none">${esc(t('noMetricsHere'))}</li>`;
-    return `<figure>
-      <img alt="${esc(t(shot.label))}" src="${phaseImage(shot, side, graded.filter(g => ARC[g.key]), aspect)}">
-      <figcaption><span>${esc(t(shot.label))}</span><em>${shot.time.toFixed(2)} s</em></figcaption>
-      <ul class="angles">${rows}</ul>
-    </figure>`;
-  }).join('');
+  out.push(t('workTitle').toUpperCase(), goodNote(prio, lang));
+  if (coach?.summary) out.push(coach.summary);
+  out.push('');
 
-  const work = issues.length
-    ? `<ol class="work">${issues.map(it => `<li>
-        <h3>${esc(it.title)}</h3>
-        <p>${esc(it.why)}</p>
-        <p class="drill"><strong>${esc(t('drill'))}:</strong> ${esc(it.drill)}</p>
-        <p class="pep">${esc(it.pep)}</p></li>`).join('')}</ol>`
-    : (a => `<div class="allclear"><h3>${esc(a.title)}</h3><p>${esc(a.why)}</p>
-        <p><strong>${esc(t('drill'))}:</strong> ${esc(a.drill)}</p><p>${esc(a.pep)}</p></div>`)(allClear(lang));
+  const issues = issueList(prio, lang, 5, coach);
+  if (!issues.length) {
+    const a = allClear(lang);
+    out.push(a.title, a.why, `${t('drill')}: ${a.drill}`, '');
+  } else {
+    issues.forEach((it, i) => {
+      out.push(`${i + 1}. ${it.title}`);
+      if (it.what) out.push(it.what);
+      out.push(it.why, `${t('drill')}: ${it.drill}`, it.pep, '');
+    });
+  }
 
-  const metrics = prio.graded.map(g => `<li><i class="${g.status}"></i><span>${esc(labelOf(g.key, lang))}
-      <em>${esc(t('reference'))} ${esc(formatValue(g.key, refOf(g.key).ok[0], lang))}–${esc(formatValue(g.key, refOf(g.key).ok[1], lang))}</em></span>
-      <b>${esc(formatValue(g.key, g.value, lang))}</b></li>`).join('');
+  if (coach?.after) out.push(t('afterTitle').toUpperCase(), coach.after.title, coach.after.text, '');
+  for (const [key, items] of [['observationsTitle', coach?.observations], ['uncertaintiesTitle', coach?.uncertainties]]) {
+    if (items?.length) out.push(t(key).toUpperCase(), ...items.map(x => `- ${x}`), '');
+  }
 
-  const html = `<!doctype html>
-<html lang="${lang}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Emitto – ${esc(t('tag'))} ${esc(dateText(lang))}</title>
-<style>
-  :root{--ink:#10262E;--soft:#4F6169;--line:#D8E0E3;--court:#EAF0F2;--ball:#FF6A2B;
-    --ok:#1F9D6A;--warn:#E0A800;--bad:#D64545;--r:12px}
-  *{box-sizing:border-box}
-  body{margin:0;background:#fff;color:var(--ink);font:17px/1.45 Barlow,system-ui,sans-serif}
-  main{max-width:760px;margin:0 auto;padding:20px 18px 60px}
-  header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0 24px}
-  header svg{height:34px;width:auto;display:block}
-  header .date{color:var(--soft);font-size:15px}
-  h1,h2,h3{font-family:"Barlow Condensed","Arial Narrow",Barlow,sans-serif;font-weight:600;margin:0}
-  h1{font-size:40px;line-height:1.05;margin-bottom:8px}
-  h2{font-size:27px;margin:32px 0 10px}
-  p{margin:0 0 10px;max-width:58ch}
-  .quiet{color:var(--soft);font-size:15px}
-  .phases{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:0}
-  @media (max-width:520px){.phases{grid-template-columns:1fr}}
-  figure{margin:0;background:var(--ink);border-radius:var(--r);overflow:hidden}
-  figure img{display:block;width:100%;height:auto}
-  figcaption{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:11px 14px 4px;color:#fff}
-  figcaption span{font-family:"Barlow Condensed","Arial Narrow",Barlow,sans-serif;font-weight:600;font-size:21px}
-  figcaption em{color:#FFB48E;font-style:normal;font-size:14px}
-  .angles{list-style:none;margin:0;padding:6px 14px 14px;color:#DCE5E9;font-size:14px}
-  .angles li{display:flex;gap:9px;align-items:baseline;padding:3px 0}
-  .angles li.none{color:#B8C6CC}
-  .angles i{flex:none;width:9px;height:9px;border-radius:50%;transform:translateY(-1px)}
-  .angles em{display:block;color:#B8C6CC;font-style:normal;font-size:13px}
-  .angles b{margin-left:auto;white-space:nowrap;font-family:"Barlow Condensed","Arial Narrow",Barlow,sans-serif;font-size:19px;color:#fff}
-  .work{list-style:none;counter-reset:n;padding:0;margin:12px 0 0;border-top:1px solid var(--line)}
-  .work li{counter-increment:n;border-bottom:1px solid var(--line);padding:16px 0 16px 44px;position:relative}
-  .work li::before{content:counter(n);position:absolute;left:0;top:16px;width:26px;height:26px;border-radius:50%;
-    background:var(--court);color:var(--soft);font-family:"Barlow Condensed","Arial Narrow",Barlow,sans-serif;
-    font-size:17px;display:grid;place-items:center}
-  .work li:first-child::before{background:var(--ball);color:#fff}
-  .work h3{font-size:24px;margin-bottom:6px}
-  .drill{background:var(--court);border-radius:8px;padding:11px 13px}
-  .pep{color:var(--soft);border-left:3px solid var(--ball);padding-left:11px;margin-bottom:0}
-  .allclear{background:var(--ink);color:#fff;border-radius:var(--r);padding:20px 22px}
-  .allclear h3{font-size:27px;margin-bottom:8px}
-  .allclear p{color:#DCE5E9}
-  .metrics{list-style:none;padding:0;margin:0;border-top:1px solid var(--line)}
-  .metrics li{display:grid;grid-template-columns:12px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
-  .metrics i{width:11px;height:11px;border-radius:50%}
-  .metrics em{display:block;color:var(--soft);font-style:normal;font-size:14px}
-  .metrics b{white-space:nowrap;font-family:"Barlow Condensed","Arial Narrow",Barlow,sans-serif;font-size:24px}
-  .good{background:var(--ok)}.meh{background:var(--warn)}.poor{background:var(--bad)}.na{background:#8FA3AB}
-  footer{margin-top:36px;color:var(--soft);font-size:14px}
-  @media print{body{font-size:12pt}figure{break-inside:avoid}.work li{break-inside:avoid}}
-</style>
-</head>
-<body>
-<main>
-  <header>${logo}<span class="date">${esc(dateText(lang))}</span></header>
-  <h1>${esc(t('tag'))}</h1>
-  <p class="quiet">${esc(notes.speed)}</p>
-
-  <h2>${esc(t('phasesTitle'))}</h2>
-  <div class="phases">${phases}</div>
-
-  <h2>${esc(t('workTitle'))}</h2>
-  <p class="quiet">${esc(goodNote(prio, lang))}</p>
-  ${work}
-
-  <h2>${esc(t('detailsTitle'))}</h2>
-  <ul class="metrics">${metrics}</ul>
-
-  <footer>
-    <p class="quiet">${esc(notes.caveat)}</p>
-    <p class="quiet">${esc(t('footer'))} · ${esc(location.host)}</p>
-  </footer>
-</main>
-</body>
-</html>`;
-  return new Blob([html], { type: 'text/html;charset=utf-8' });
+  out.push(t('detailsTitle').toUpperCase());
+  for (const g of prio.graded) {
+    const r = refOf(g.key);
+    out.push(line(labelOf(g.key, lang),
+      `${formatValue(g.key, g.value, lang)} (${t('reference')} ${formatValue(g.key, r.ok[0], lang)}–${formatValue(g.key, r.ok[1], lang)})`));
+  }
+  out.push('', notes.caveat, `${t('footer')} · ${location.host}`);
+  return out.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 // ---------------------------------------------------------------- ut ur appen
@@ -394,6 +337,25 @@ export async function shareReport(data, notes) {
 // Web Share ger telefonens egen delningsruta: bilden hamnar i samma chatt som allt annat
 // spelaren skickar. Saknas den – eller vill webbläsaren inte dela just den filtypen –
 // laddas filen ner i stället. Ingen av vägarna passerar en server.
+// Text är inte en fil förrän den måste vara det. Delningsrutan tar emot ren text i de flesta
+// webbläsare, och då hamnar den som ett vanligt meddelande i chatten – med en bifogad fil hade
+// mottagaren behövt öppna något. Går det inte: urklipp, och sist en nedladdad .txt.
+export async function deliverText(text, filename, title) {
+  if (navigator.share) {
+    try {
+      await navigator.share({ text, title });
+      return 'shared';
+    } catch (e) {
+      if (e.name === 'AbortError') return 'cancelled';
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    return 'copied';
+  } catch { /* inget urklipp – ladda ner i stället */ }
+  return deliver(new Blob([text], { type: 'text/plain;charset=utf-8' }), filename, title);
+}
+
 export async function deliver(blob, filename, title) {
   const file = new File([blob], filename, { type: blob.type });
   if (navigator.canShare?.({ files: [file] })) {

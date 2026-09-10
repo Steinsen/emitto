@@ -6,7 +6,7 @@ import { pickSide, signals, findPhases, metrics, estimateSpeed, rescaleTime, pos
 import { prioritize, issueList, allClear, goodNote, labelOf, refOf, formatValue, METRIC_PHASE } from './rules.js';
 import { t, getLang, setLang, applyStatic, LANGS } from './i18n.js';
 import { drawFrame, personCrop, STATUS_COLOR, ARC } from './draw.js';
-import { shareImage, shareReport, deliver, stamp } from './share.js';
+import { shareImage, reportText, deliver, deliverText, stamp } from './share.js';
 import { buildPayload, collectFrames, requestCoach, merge } from './coach.js';
 
 const $ = id => document.getElementById(id);
@@ -280,12 +280,14 @@ async function compute(frames, side, aspect) {
   const sig0 = signals(frames, side, aspect);
   const speed = resolveSpeed(sig0);
   const sig = rescaleTime(sig0, speed.factor);
+  $('loadmsg').textContent = t('loadingMeasure');
   const ph = findPhases(sig);
   const m = metrics(sig, ph);
 
   // Måtten efter släppet. De har inga riktvärden och går inte in i prioriteringen – de är
-  // underlag för den AI-formulerade texten, som får bedöma dem inom en ram i worker/prompt.js.
+  // underlag för djupanalysen, som får bedöma dem inom en ram i worker/prompt.js.
   const pr = postRelease(sig, ph);
+  bar.style.width = '80%';
 
   // Fasernas bilder är redan tagna, ur samma avläsning som ledpunkterna. Här ritas de
   // bara upp – videon rörs inte längre, så ett hastighetsbyte kostar ingen sökning alls.
@@ -302,16 +304,23 @@ async function compute(frames, side, aspect) {
   // Landningen visas inte i fasremsan – den hör inte till de fyra faserna – men den får följa
   // med som bild när användaren valt att skicka rutor.
   const landingShot = pr.landing >= 0 ? await shotAt(pr.landing, { key: 'landing' }) : null;
-  bar.style.width = '100%';
+  bar.style.width = '90%';
 
   const times = {};
   for (const k of ['lowest', 'set', 'release', 'takeoff', 'apex', 'follow']) {
     times[k] = ph[k] >= 0 ? sig[ph[k]].t : null;
   }
 
-  coach = null;   // nytt resultat: den AI-formulerade texten hör till det gamla
-  last = { frames, side, aspect, shots, landingShot, m, ph, speed, prio: prioritize(m),
-    times, pr, vis: visibilityByMetric(frames, ph, side) };
+  const data = { frames, side, aspect, shots, landingShot, m, ph, speed, prio: prioritize(m),
+    times, pr, vis: visibilityByMetric(frames, ph, side), coach: null };
+
+  // Djupanalysen hör till resultatet, inte till något man väntar på efteråt. Den som filmat
+  // ska få se allt på en gång, och tills dess vet hen vad appen håller på med.
+  $('loadmsg').textContent = t('loadingCoach');
+  data.coach = await askCoach(data, getLang());
+  bar.style.width = '100%';
+
+  last = data;
   renderResult(last);
   show('result');
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -420,18 +429,16 @@ function renderResult(data) {
 
   // Förbehåll
   $('caveat').textContent = caveatNote(data);
-  renderCoach(data, lang);
+  renderExtras(data);
   prepareShare(data);
-  ensureCoach(data);
+  recoachOnLanguageChange(data);
 }
 
-// Att jobba på. Ordningen kommer alltid från rules.js. Den AI-formulerade texten läggs bara
-// ovanpå de poster som har samma nyckel – merge() i coach.js gör inget annat.
-//
-// Egen funktion därför att den är det enda som ändras när workern svarar. Att rita om hela
-// resultatvyn då skulle stänga fasernas vinkelvyer och göra om delningsbilden i onödan.
+// Att jobba på. Ordningen kommer alltid från rules.js. Den skrivna texten läggs bara ovanpå de
+// poster som har samma nyckel – merge() i coach.js gör inget annat, och stämmer inte nyckeln
+// behåller posten sin egen text.
 function renderWork(data, lang) {
-  const issues = merge(issueList(data.prio, lang, 5), coachResult(data));
+  const issues = merge(issueList(data.prio, lang, 5), coachOf(data));
   $('goodnote').textContent = goodNote(data.prio, lang);
   const ol = $('work');
   ol.innerHTML = '';
@@ -446,7 +453,7 @@ function renderWork(data, lang) {
     head.type = 'button';
     head.className = 'head';
     head.setAttribute('aria-expanded', 'false');
-    head.innerHTML = `<span class="rank">${i + 1}</span><span class="label">${esc(it.title)}</span>${it.ai ? badge() : ''}<span class="plus" aria-hidden="true"></span>`;
+    head.innerHTML = `<span class="rank">${i + 1}</span><span class="label">${esc(it.title)}</span><span class="plus" aria-hidden="true"></span>`;
     const body = document.createElement('div');
     body.className = 'body';
     body.hidden = true;
@@ -472,91 +479,85 @@ function speedNote({ speed }) {
     : t('speedAssumed');
 }
 
-function caveatNote({ m, ph, side }) {
+function caveatNote(data) {
+  const { m, ph, side } = data;
   const lag = m.takeoffLag == null ? t('lagUnknown')
     : m.takeoffLag < 0 ? t('lagBefore')(Math.abs(m.takeoffLag).toFixed(2))
     : t('lagAfter')(m.takeoffLag.toFixed(2));
   const extra = t('extra')(m.hipVel.toFixed(0), lag, ph.fps.toFixed(0));
-  return t('caveat')(t(side === 'right' ? 'sideRight' : 'sideLeft'), extra);
+  const base = t('caveat')(t(side === 'right' ? 'sideRight' : 'sideLeft'), extra);
+  // Ingen märkning rad för rad, men det ska gå att veta hur texten kommit till.
+  return coachOf(data) ? `${base} ${t('writtenBy')}` : base;
 }
 
-// ---------------------------------------------------------------- AI-formulerad text
+// ---------------------------------------------------------------- djupanalysen
 //
-// Den mätta delen står färdig direkt: resultatvyn ritas med rules.js egna texter så snart
-// analysen är klar, och först när workern svarat byts orden ut – märkta "AI-formulerad". Under
-// tiden studsar bollen där texten ska stå. Går anropet inte igenom står rules.js text kvar och
-// det enda som syns är en nedtonad rad. Ordningen i listan kommer aldrig härifrån.
+// Den mätta delen och den skrivna delen hör ihop och visas tillsammans: anropet till workern
+// görs medan laddningsvyn står kvar, och resultatet ritas först när allt är på plats. Det som
+// står i listan är samma sak oavsett var orden kommer ifrån – riktvärdena bestämmer ordningen
+// och bedömningen, texten formuleras av en språkmodell utifrån dem. Därför märks den inte ut
+// rad för rad; att den är skriven så står i förbehållet under resultatet.
 //
-// Bildrutorna följer alltid med: fem beskurna stillbilder ur rutor som redan lästs av. Klippet
-// gör det inte – det lämnar aldrig enheten.
-
-let coach = null;   // { data, lang, status: 'working'|'done'|'failed', result }
-
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const badge = () => `<span class="ai">${esc(t('coachBadge'))}</span>`;
-
-const coachResult = data => (coach && coach.data === data && coach.lang === getLang() && coach.status === 'done' ? coach.result : null);
+// Går anropet inte igenom står rules.js egna texter kvar. Det syns inte som ett fel, för det är
+// inget fel: listan, siffrorna och prioriteringen är desamma.
 
 const chosenAge = () => {
   const v = parseInt($('age').value, 10);
   return Number.isFinite(v) && v >= 5 && v <= 99 ? v : null;
 };
 
-function framesFor(data) {
-  return data.landingShot ? [...data.shots, data.landingShot] : data.shots;
-}
+// Landningen följer med som bild när den hittades, utöver de fyra faserna.
+const framesFor = data => (data.landingShot ? [...data.shots, data.landingShot] : data.shots);
 
-async function ensureCoach(data) {
-  const lang = getLang();
-  if (coach && coach.data === data && coach.lang === lang) return;
-  const job = { data, lang, status: 'working', result: null };
-  coach = job;
-  renderCoach(data, lang);
+// Kastar aldrig: ett uteblivet svar är ett tomt svar, inget att visa upp.
+async function askCoach(data, lang) {
   try {
     const jpegs = collectFrames(framesFor(data), data.aspect);
-    job.result = await requestCoach(buildPayload({ lang, age: chosenAge(), data, frames: jpegs }));
-    job.status = 'done';
+    const res = await requestCoach(buildPayload({ lang, age: chosenAge(), data, frames: jpegs }));
+    return { ...res, lang };
   } catch {
-    job.status = 'failed';   // koden säger inget användaren kan göra något åt
+    return null;
   }
-  if (coach === job && last === data) showCoach(data);
 }
 
-// Ritar om det som beror på svaret, och bara det.
-function showCoach(data) {
-  renderWork(data, getLang());
-  renderCoach(data, getLang());
+// Texten hör till sitt språk. Byter användaren språk efter analysen hämtas den om i bakgrunden;
+// under tiden står rules.js texter där, på rätt språk.
+const coachOf = data => (data.coach && data.coach.lang === getLang() ? data.coach : null);
+
+async function recoachOnLanguageChange(data) {
+  const lang = getLang();
+  if (!data.coach || data.coach.lang === lang || data.coaching === lang) return;
+  data.coaching = lang;
+  const res = await askCoach(data, lang);
+  data.coaching = null;
+  if (res && last === data && getLang() === lang) {
+    data.coach = res;
+    renderResult(data);
+  }
 }
 
-function renderCoach(data, lang) {
-  const job = coach && coach.data === data && coach.lang === lang ? coach : null;
-  const res = job && job.status === 'done' ? job.result : null;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// Sammanfattningen, rutan om det som händer efter släppet, och det som inte får plats i listan.
+function renderExtras(data) {
+  const res = coachOf(data);
   const note = $('coachnote'), box = $('after'), extra = $('coachextra');
 
-  // Bollen studsar bara medan vi väntar. Den försvinner i samma ögonblick som texten är på
-  // plats – eller uteblev; ett spinnande hjul som aldrig tar slut är värre än ett tyst nej.
-  const waiting = !job || job.status === 'working';
-  $('coachwait').hidden = !waiting;
-  note.innerHTML = waiting ? ''
-    : job.status === 'failed' ? esc(t('coachFailed'))
-    : `${badge()} ${esc(res.summary)}`;
+  note.textContent = res?.summary || '';
 
   box.hidden = !res?.after;
   box.innerHTML = res?.after
-    ? `<h3>${esc(t('afterTitle'))} ${badge()}</h3>
+    ? `<h3>${esc(t('afterTitle'))}</h3>
        <p><strong>${esc(res.after.title)}</strong></p>
-       <p>${esc(res.after.text)}</p>
-       <p class="quiet">${esc(t('afterNote'))}</p>`
+       <p>${esc(res.after.text)}</p>`
     : '';
 
-  const list = (title, items, note2) => `<h3>${esc(title)}</h3>${note2 ? `<p class="quiet">${esc(note2)}</p>` : ''}
-    <ul>${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+  const list = (title, items) => `<h3>${esc(title)}</h3><ul>${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
   const parts = [];
   if (res?.strengths?.length) parts.push(list(t('strengthsTitle'), res.strengths));
-  if (res?.observations?.length) parts.push(list(t('observationsTitle'), res.observations, t('observationsNote')));
+  if (res?.observations?.length) parts.push(list(t('observationsTitle'), res.observations));
   if (res?.uncertainties?.length) parts.push(list(t('uncertaintiesTitle'), res.uncertainties));
   if (res?.disagreement) parts.push(`<h3>${esc(t('disagreementTitle'))}</h3><p class="quiet">${esc(res.disagreement)}</p>`);
-  if (res) parts.push(`<p class="quiet">${esc(t('coachNote'))}</p>`);
   extra.innerHTML = parts.join('');
 }
 
@@ -574,7 +575,7 @@ function prepareShare(data) {
   const soon = window.requestIdleCallback || (fn => setTimeout(fn, 200));
   soon(() => {
     if (last !== data || getLang() !== lang) return;   // nytt klipp eller nytt språk hann före
-    const job = shareImage(data, { speed: speedNote(data) })
+    const job = shareImage(data, notesFor(data))
       .then(blob => { if (last === data && getLang() === lang) card = { lang, blob }; return blob; })
       .catch(() => null);
     card = { lang, job };
@@ -585,6 +586,7 @@ async function withButton(btn, working, run) {
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = working;
+  $('sharenote').textContent = t('shareNote');   // raden hör till den här delningen, inte förra
   try {
     await run();
   } catch {
@@ -595,15 +597,22 @@ async function withButton(btn, working, run) {
   }
 }
 
+const notesFor = data => ({ speed: speedNote(data), caveat: caveatNote(data) });
+
 $('share-image').addEventListener('click', e => withButton(e.currentTarget, t('shareWorking'), async () => {
   const ready = card && card.lang === getLang() ? (card.blob || await card.job) : null;
-  const blob = ready || await shareImage(last, { speed: speedNote(last) });
+  const blob = ready || await shareImage(last, notesFor(last));
   await deliver(blob, stamp('jpg'), `Emitto – ${t('tag')}`);
 }));
 
-$('share-report').addEventListener('click', e => withButton(e.currentTarget, t('shareWorking'), async () => {
-  const blob = await shareReport(last, { speed: speedNote(last), caveat: caveatNote(last) });
-  await deliver(blob, stamp('html'), `Emitto – ${t('tag')}`);
+// Texten kan inte förberedas i förväg av samma skäl som bilden måste det: den är klar direkt.
+$('share-text').addEventListener('click', e => withButton(e.currentTarget, t('shareWorking'), async () => {
+  const how = await deliverText(reportText(last, notesFor(last)), stamp('txt'), `Emitto – ${t('tag')}`);
+  // Blev det urklipp eller nedladdning i stället för delningsrutan ska användaren få veta var
+  // texten tog vägen – annars ser det ut som att knappen inte gjorde något.
+  $('sharenote').textContent = how === 'copied' ? t('shareCopied')
+    : how === 'downloaded' ? t('shareDownloaded')
+    : t('shareNote');
 }));
 
 function buildDots(wrap) {

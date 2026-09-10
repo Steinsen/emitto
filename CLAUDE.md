@@ -26,7 +26,7 @@ tränare i loopen. Gränssnittet finns på svenska och engelska.
 | `index.html` | UI, stil, designtokens, de tre vyerna | utseende, struktur |
 | `app.js` | laddar klipp, kör MediaPipe ruta för ruta, ritar faser och listor | prestanda, rendering |
 | `draw.js` | ritar en fas: bilden, skelettet och vinkelbågarna på en canvas | skelettet eller bågarna ska se annorlunda ut |
-| `share.js` | gör resultatet till en delningsbild (JPEG) eller en fristående sida (HTML) | det som delas ska innehålla något annat |
+| `share.js` | gör resultatet till en delningsbild (JPEG) eller ren text | det som delas ska innehålla något annat |
 | `analysis.js` | hittar faser och räknar mätvärden ur ledpunkter | fasdetektering är fel |
 | `rules.js` | riktvärden, prioritering, feedbacktexter på båda språken | gränser, texter, ordning |
 | `coach.js` | bygger anropet till `/api/coach` och lägger svaret ovanpå listan | vad som skickas, hur svaret används |
@@ -184,12 +184,18 @@ Resultatet ligger kvar i `last`, så språkbyte ritar om utan att analysera igen
 
 ## Dela resultatet (share.js)
 
-Två format, för två olika saker. **Bilden** (JPEG, 1080 px bred) är förstahandsvalet: den
-hamnar direkt i chatten och syns utan att någon behöver öppna en fil – de fyra faserna,
-listan och alla mätvärden mot riktvärdena. **Sidan** (en enda HTML-fil, ~40 kB) har hela
-rapporten med varför, övning och pepp, och är till för den som vill spara eller maila.
+Två format, för två olika saker. **Bilden** (JPEG, 1080 px bred) är förstahandsvalet: den hamnar
+direkt i chatten och syns utan att någon behöver öppna en fil. **Texten** (ren text) är för den
+som hellre svarar och citerar än tittar.
 
-Båda går ut genom `deliver()`: Web Share med fil om webbläsaren kan, annars nedladdning.
+Bilden bär hela texten – rubrik, varför och övning för varje punkt, rutan om det som händer efter
+släppet, alla mätvärden. Det är inte överflöd: en bildtext överlever inte vägen till en chatt.
+`navigator.share({ files, text })` får skicka med båda, men det är mottagarappen som bestämmer,
+och WhatsApp och Messenger tar bilden och slänger texten. Ligger texten i bilden kommer den fram.
+
+Bilden går ut genom `deliver()` (Web Share med fil, annars nedladdning) och texten genom
+`deliverText()`: delningsrutan med ren text om den finns, annars urklipp, annars en `.txt`.
+Vilken väg det blev syns i raden under knapparna – annars ser det ut som att inget hände.
 Ingen av vägarna passerar en server. Bilderna kommer från rutor som redan är avlästa, och
 det är användaren som väljer att skicka dem – löftet gäller klippet, och klippet skickas
 aldrig.
@@ -205,9 +211,9 @@ Två saker är inte godtyckliga:
   spelaren annars en streckgubbe i frimärksformat. Utsnittet utgår från ledpunkterna, så
   hela kroppen är alltid med – `test-units.mjs` kontrollerar just det. Resultatvyn använder
   samma utsnitt, så appen och det tränaren får skickat visar samma bild.
+- **Listan i bilden och texten går genom samma `merge()` som skärmen.** Annars kunde det som
+  delas säga en sak och det som visades en annan.
 
-Sidan bär inte med sig typsnitten: tre TTF-filer hade lagt en halv megabyte till en fil som
-ska kunna mailas. Färgerna och strukturen bär ändå.
 
 ## Prioritering (rules.js)
 
@@ -225,17 +231,22 @@ visas nedtonat.
 (handleden som når högst). Riktvärdena är de tidigare vuxenvärdena, eftersom 14 år var förvalt
 och landade där – bedömningen av ett givet klipp är alltså oförändrad.
 
-## Den AI-formulerade texten (coach.js, worker/)
+## Djupanalysen (coach.js, worker/)
 
 Riktvärdestexterna i `rules.js` är korrekta men statiska: samma mening till alla, ingen koppling
 mellan avvikelserna, inget om det `analysis.js` inte kan mäta. Ovanpå dem ligger ett lager som
 låter en språkmodell **formulera** samma analys – knyta ihop det som hänger ihop, motivera med
 forskningsstöd, och säga något om det som syns i bilderna.
 
-Kedjan: `app.js` ritar resultatet med `rules.js` texter → `coach.js` bygger en payload av det som
-redan är uträknat → `POST /api/coach` → `worker/index.js` validerar, frågar modellen med
-`worker/prompt.js` som systemprompt och **kontrollerar svaret mot listan** → `merge()` lägger
-orden på rätt post och vyn ritas om, märkt "AI-formulerad".
+Kedjan: `app.js` mäter → `coach.js` bygger en payload av det som redan är uträknat →
+`POST /api/coach` → `worker/index.js` validerar, frågar modellen med `worker/prompt.js` som
+systemprompt och **kontrollerar svaret mot listan** → `merge()` lägger orden på rätt post →
+hela resultatet ritas.
+
+**Den skrivna texten märks inte ut rad för rad.** Listan är densamma oavsett var orden kommer
+ifrån: riktvärdena bestämmer ordningen och bedömningen, modellen formulerar. En etikett per rad
+gjorde skillnaden större än den är. Att texten är skriven så står i förbehållet under resultatet
+(`writtenBy` i `i18n.js`) – det är den ärliga miniminivån, och den ska inte tas bort.
 
 Vad modellen får: skriva sammanhängande text, knyta ihop avvikelser, motivera med källor, föreslå
 övning, anpassa tonen efter ålder, och skriva observationer ur bilderna. Vad den inte får: välja
@@ -265,17 +276,22 @@ Kryssrutan som lät användaren välja bort dem är borttagen på begäran. Det 
 spelaren laddas upp utan att någon tillfrågas – vill du ha valet tillbaka är det `collectFrames`
 i `coach.js` och en kryssruta i `index.html` som ska tillbaka, inget annat.
 
-**Den mätta delen visas direkt.** Resultatvyn ritas färdig med `rules.js` texter så snart
-analysen är klar; medan modellen skriver studsar samma boll som i laddningsvyn där texten ska
-stå (`#coachwait`), och den försvinner när texten byts ut – eller när anropet misslyckats. Ett
-spinnande hjul som aldrig tar slut vore värre än ett tyst nej.
+**Allt visas på en gång, när allt är klart.** Anropet till workern görs medan laddningsvyn står
+kvar, och resultatvyn ritas först när svaret kommit. Bollen studsar hela tiden, och texten under
+den säger vad som händer just nu: laddar modellen, letar efter skottet, mäter vinklar, ritar
+faserna, frågar en skottexpert. En halv resultatvy som fylls på i efterhand var svårare att läsa
+än en som kommer färdig – och den mätta delen är sällan mer än ett par sekunder före den skrivna.
 
-Åldern är ett frivilligt tal i startvyn. Den styr bara ordvalen i den AI-formulerade texten –
-aldrig riktvärdena, som gäller alla åldrar.
+Byter användaren språk efter analysen hämtas texten om i bakgrunden
+(`recoachOnLanguageChange`); tills dess står `rules.js` texter där, på rätt språk.
+
+Åldern är ett frivilligt tal i startvyn. Den styr bara ordvalen i den skrivna texten – aldrig
+riktvärdena, som gäller alla åldrar.
 
 **Fallbacken är normalläget, inte ett undantag.** Går anropet inte igenom – offline, saknad
-nyckel, timeout, eller ett svar som inte följer listan – står `rules.js` texter kvar och det enda
-som syns är en nedtonad rad. Appen ska gå att använda helt utan Workern.
+nyckel, timeout, eller ett svar som inte följer listan – står `rules.js` texter kvar och inget
+felmeddelande visas. Det är inte att dölja något: listan, siffrorna och prioriteringen är
+desamma, det är bara orden som är de generella. Appen ska gå att använda helt utan Workern.
 
 ## Kända svagheter
 

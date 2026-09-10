@@ -140,10 +140,8 @@
   .allclear{background:var(--ink);color:#fff;border-radius:var(--r);padding:20px 22px;margin:14px 0 0}
   .allclear h3{font-family:"Barlow Condensed";font-weight:600;font-size:30px;margin:0 0 10px}
   .allclear p{color:#DCE5E9}
-  /* AI-formulerat – lågmält och alltid märkt. Texten kan bytas ut, ordningen aldrig. */
-  .ai{font-family:"Barlow Condensed";font-weight:600;font-size:14px;color:var(--ink-soft);
-    border:1px solid var(--line);border-radius:20px;padding:1px 9px;white-space:nowrap;vertical-align:2px}
-  .work .head .ai{margin-left:auto}
+  /* Sammanfattningen och det som inte får plats i listan. */
+  #coachnote{max-width:56ch}
   .after{border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin:20px 0 0}
   .after h3{font-family:"Barlow Condensed";font-weight:600;font-size:24px;margin:0 0 8px;display:flex;gap:10px;align-items:baseline}
   .after p{margin:0 0 8px}
@@ -152,12 +150,6 @@
   #coachextra h3{font-family:"Barlow Condensed";font-weight:600;font-size:19px;margin:16px 0 4px}
   #coachextra ul{margin:0;padding-left:20px;color:var(--ink-soft);font-size:15px}
   #coachextra li{margin:0 0 4px}
-  /* display:flex vinner över webbläsarens [hidden]{display:none} – utan raden nedan blir bollen
-     kvar och studsar för evigt, också när texten är på plats. */
-  .coachwait{display:flex;align-items:center;gap:12px;margin:14px 0 0}
-  .coachwait[hidden]{display:none}
-  .coachwait .ball{width:30px;height:30px;margin:0;flex:none;animation-duration:.9s}
-  .coachwait .loadmsg{margin:0;font-size:16px}
   .age input{font:inherit;width:5.5em;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}
 
   /* Dela – bilden hamnar i chatten, sidan är för den som vill spara hela rapporten */
@@ -246,19 +238,7 @@
 
     <h2 data-i18n="workTitle"></h2>
     <p class="quiet" id="goodnote"></p>
-    <!-- Den mätta delen står färdig direkt. Bollen studsar bara medan modellen skriver, och
-         är borta i samma ögonblick som texten byts ut. -->
-    <div class="coachwait" id="coachwait" hidden>
-      <svg class="ball" viewBox="0 0 48 48" role="img" aria-hidden="true">
-        <circle cx="24" cy="24" r="21" fill="#FF6A2B"/>
-        <g fill="none" stroke="#10262E" stroke-width="2">
-          <circle cx="24" cy="24" r="21"/>
-          <path d="M3 24h42M24 3v42M9 9c8 6 8 24 0 30M39 9c-8 6-8 24 0 30"/>
-        </g>
-      </svg>
-      <p class="loadmsg" data-i18n="coachWorking"></p>
-    </div>
-    <p class="quiet" id="coachnote"></p>
+    <p id="coachnote"></p>
     <ol class="work" id="work"></ol>
 
     <!-- Efter släppet. Egen ruta, aldrig en rad i listan: listan är rules.js. -->
@@ -267,7 +247,7 @@
 
     <div class="share">
       <button id="share-image" data-i18n="shareImage"></button>
-      <button id="share-report" class="ghost" data-i18n="shareReport"></button>
+      <button id="share-text" class="ghost" data-i18n="shareText"></button>
     </div>
     <p class="quiet" id="sharenote" data-i18n="shareNote"></p>
 

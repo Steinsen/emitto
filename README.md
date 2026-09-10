@@ -7,8 +7,8 @@ Gränssnittet finns på svenska och engelska och väljer språk efter webbläsar
 
 Texten i listan formuleras av en språkmodell via `/api/coach` i samma Worker, utifrån de
 mätvärden som redan räknats fram på enheten. Ordningen i listan kommer alltid från `rules.js`
-och kan inte ändras av modellen. Går anropet inte igenom står `rules.js` egna texter kvar –
-appen fungerar helt utan det.
+och kan inte ändras av modellen. Anropet görs medan laddningsvyn står kvar, så hela resultatet
+visas på en gång. Går det inte igenom står `rules.js` egna texter kvar – appen fungerar utan det.
 
 ## Så används den
 Välj ett klipp. Analysen startar direkt. Är klippet filmat i slow motion kan du välja
@@ -28,7 +28,7 @@ av rutor som redan är avlästa – klippet laddas fortfarande aldrig upp.
 - `index.html` – gränssnitt och stil, de tre vyerna
 - `app.js` – laddar klipp, kör MediaPipe ruta för ruta, ritar faser och listor
 - `draw.js` – ritar en fas: bilden, skelettet och vinkelbågarna (används av både vyn och delningen)
-- `share.js` – delningsbild (JPEG) och fristående rapport (HTML)
+- `share.js` – delningsbild (JPEG) och rapport som ren text
 - `analysis.js` – hittar faserna (lägsta läge, set point, släpp, frånskjut, följning) och räknar mätvärden
 - `rules.js` – riktvärden, prioriteringslogik, feedbacktexter på båda språken. **Det är här du justerar.**
 - `coach.js` – bygger anropet till `/api/coach` och lägger svaret ovanpå listan
