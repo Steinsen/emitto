@@ -26,7 +26,7 @@ tränare i loopen. Gränssnittet finns på svenska och engelska.
 | `index.html` | UI, stil, designtokens, de tre vyerna | utseende, struktur |
 | `app.js` | laddar klipp, kör MediaPipe ruta för ruta, ritar faser och listor | prestanda, rendering |
 | `draw.js` | ritar en fas: bilden, skelettet och vinkelbågarna på en canvas | skelettet eller bågarna ska se annorlunda ut |
-| `share.js` | gör resultatet till en delningsbild (JPEG) eller ren text | det som delas ska innehålla något annat |
+| `share.js` | gör faserna till en delningsbild (JPEG) och rapporten till ren text | det som delas ska innehålla något annat |
 | `analysis.js` | hittar faser och räknar mätvärden ur ledpunkter | fasdetektering är fel |
 | `rules.js` | riktvärden, prioritering, feedbacktexter på båda språken | gränser, texter, ordning |
 | `coach.js` | bygger anropet till `/api/coach` och lägger svaret ovanpå listan | vad som skickas, hur svaret används |
@@ -184,18 +184,20 @@ Resultatet ligger kvar i `last`, så språkbyte ritar om utan att analysera igen
 
 ## Dela resultatet (share.js)
 
-Två format, för två olika saker. **Bilden** (JPEG, 1080 px bred) är förstahandsvalet: den hamnar
-direkt i chatten och syns utan att någon behöver öppna en fil. **Texten** (ren text) är för den
-som hellre svarar och citerar än tittar.
+Två knappar, två saker. **Dela bild** ger faserna med vinklarna och ingenting annat (JPEG,
+1080 px bred, ~1800 px hög). **Dela beskrivning** ger hela rapporten som ren text: listan med
+varför och övning, rutan om det som händer efter släppet, alla mätvärden mot riktvärdena.
 
-Bilden bär hela texten – rubrik, varför och övning för varje punkt, rutan om det som händer efter
-släppet, alla mätvärden. Det är inte överflöd: en bildtext överlever inte vägen till en chatt.
-`navigator.share({ files, text })` får skicka med båda, men det är mottagarappen som bestämmer,
-och WhatsApp och Messenger tar bilden och slänger texten. Ligger texten i bilden kommer den fram.
+Bilden bar ett tag hela texten också, av tanken att en bildtext inte överlever vägen till en
+chatt. Den blev tre skärmar hög, komprimerades sönder i chattapparna och gick varken att citera
+eller svara på. En bild ska vara en bild. Vill man ha båda skickar man två meddelanden – och det
+är ändå vad WhatsApp och Messenger tvingar fram: `navigator.share({ files, text })` får skicka
+med båda, men mottagarappen väljer, och de tar bilden och slänger texten.
 
 Bilden går ut genom `deliver()` (Web Share med fil, annars nedladdning) och texten genom
-`deliverText()`: delningsrutan med ren text om den finns, annars urklipp, annars en `.txt`.
-Vilken väg det blev syns i raden under knapparna – annars ser det ut som att inget hände.
+`deliverText()`: delningsrutan med ren text om den finns – då hamnar den som ett vanligt
+meddelande som går att svara på – annars urklipp, annars en `.txt`. Vilken väg det blev syns i
+raden under knapparna, annars ser det ut som att inget hände.
 Ingen av vägarna passerar en server. Bilderna kommer från rutor som redan är avlästa, och
 det är användaren som väljer att skicka dem – löftet gäller klippet, och klippet skickas
 aldrig.
@@ -211,8 +213,8 @@ Två saker är inte godtyckliga:
   spelaren annars en streckgubbe i frimärksformat. Utsnittet utgår från ledpunkterna, så
   hela kroppen är alltid med – `test-units.mjs` kontrollerar just det. Resultatvyn använder
   samma utsnitt, så appen och det tränaren får skickat visar samma bild.
-- **Listan i bilden och texten går genom samma `merge()` som skärmen.** Annars kunde det som
-  delas säga en sak och det som visades en annan.
+- **Listan i texten går genom samma `merge()` som skärmen.** Annars kunde det som delas säga en
+  sak och det som visades en annan.
 
 
 ## Prioritering (rules.js)
