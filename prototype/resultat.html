@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emitto resultatvy</title>
+<style>
+  @font-face{font-family:"Barlow";src:url(../fonts/Barlow-Regular.ttf) format("truetype");font-weight:400;font-display:swap}
+  @font-face{font-family:"Barlow";src:url(../fonts/Barlow-SemiBold.ttf) format("truetype");font-weight:600;font-display:swap}
+  @font-face{font-family:"Barlow Condensed";src:url(../fonts/BarlowCondensed-SemiBold.ttf) format("truetype");font-weight:600;font-display:swap}
+</style>
+<style>
+  :root{
+    color-scheme: light;
+    --ink:#10262E; --ink-soft:#4F6169; --line:#D8E0E3; --paper:#FFFFFF; --court:#EAF0F2;
+    --ball:#FF6A2B; --ok:#1F9D6A; --warn:#E0A800; --bad:#D64545; --r:12px;
+    --shell:#0B1B21;        /* prototypens ram – mörkare än appens bläck, så den läses som "inte appen" */
+    --shell-soft:#7E949B;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--shell);color:#DCE5E9;
+       font-family:Barlow,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:17px;line-height:1.45}
+  .wrap{max-width:1240px;margin:0 auto;padding-block:22px 56px;padding-left:16px;padding-right:16px}
+
+  /* Prototypens egen ram */
+  .chrome{display:flex;flex-wrap:wrap;gap:14px 20px;align-items:center;justify-content:space-between;
+          padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.14)}
+  .mark{display:flex;align-items:baseline;gap:10px}
+  .mark b{font-family:"Barlow Condensed",Barlow,sans-serif;font-weight:600;font-size:28px;letter-spacing:.01em;color:#fff}
+  .mark span{font-family:"Barlow Condensed",Barlow,sans-serif;font-weight:600;font-size:17px;color:var(--shell-soft);letter-spacing:.04em;text-transform:uppercase}
+  .switch{display:flex;border:1px solid rgba(255,255,255,.22);border-radius:9px;overflow:hidden}
+  .switch button{font:inherit;font-weight:600;font-size:15px;border:0;background:transparent;color:#B9C9CF;
+                 padding:9px 16px;cursor:pointer}
+  .switch button+button{border-left:1px solid rgba(255,255,255,.22)}
+  .switch button[aria-pressed=true]{background:var(--ball);color:#fff}
+  .brief{max-width:68ch;margin:18px 0 0;color:#B9C9CF;font-size:16px}
+  .brief b{color:#fff;font-weight:600}
+  .count{display:flex;flex-wrap:wrap;gap:8px 18px;margin:14px 0 0;padding:0;list-style:none;
+         color:var(--shell-soft);font-size:14px;letter-spacing:.02em}
+  .count b{font-family:"Barlow Condensed",Barlow,sans-serif;font-size:20px;color:#fff;font-variant-numeric:tabular-nums}
+
+  /* Scenen: en eller två appkolumner */
+  .stage{display:grid;gap:26px;margin-top:26px;justify-content:center;
+         grid-template-columns:minmax(0,600px)}
+  .variant{min-width:0}
+  .vhead{display:flex;align-items:baseline;gap:10px;margin:0 0 10px;color:var(--shell-soft);font-size:14px;
+         letter-spacing:.06em;text-transform:uppercase}
+  .vhead b{font-family:"Barlow Condensed",Barlow,sans-serif;font-size:19px;letter-spacing:.02em;color:#fff;text-transform:none}
+  [data-show=old] #v-new,[data-show=new] #v-old{display:none}
+
+  /* ---- appens egna ytor och tokens innanför ramen ---- */
+  .app{background:var(--paper);color:var(--ink);border-radius:16px;padding:20px 18px 26px;overflow:hidden}
+  .app h2{font-family:"Barlow Condensed",Barlow,sans-serif;font-weight:600;font-size:28px;line-height:1.1;margin:26px 0 10px}
+  .app h2:first-child{margin-top:0}
+  .app p{margin:0 0 10px;max-width:58ch}
+  .quiet{color:var(--ink-soft);font-size:15px}
+  .app button{font:inherit;font-weight:600;font-size:17px;border:0;border-radius:9px;padding:13px 22px;
+              background:var(--ball);color:#fff;cursor:pointer}
+  .app .ghost{background:var(--court);color:var(--ink)}
+  .app button:focus-visible,.switch button:focus-visible,summary:focus-visible{outline:3px solid var(--ball);outline-offset:2px}
+
+  /* Faserna */
+  .phases{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -18px;
+          padding:4px 18px 10px;scrollbar-width:none}
+  .phases::-webkit-scrollbar{display:none}
+  .phase{flex:0 0 82%;max-width:330px;scroll-snap-align:center;margin:0;background:var(--ink);
+         border-radius:var(--r);overflow:hidden;cursor:pointer}
+  .phase svg.shot{display:block;width:100%;height:auto;background:#0A1B21}
+  .phase figcaption{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:11px 14px 0;color:#fff}
+  .phase .name{font-family:"Barlow Condensed",Barlow,sans-serif;font-weight:600;font-size:22px}
+  .phase .time{color:#FFB48E;font-size:14px;font-variant-numeric:tabular-nums}
+  .phase .toggle{display:block;width:100%;text-align:left;background:none;color:#FFB48E;font-size:15px;
+                 padding:8px 14px 13px;font-weight:400;border-radius:0}
+  .phase .toggle::before{content:"+";display:inline-block;width:17px;font-weight:600}
+  .phase[data-open=true] .toggle::before{content:"–"}
+  .angles{list-style:none;margin:0;padding:2px 14px 14px;color:#DCE5E9;font-size:15px}
+  .angles li{display:flex;gap:9px;align-items:baseline;padding:4px 0}
+  .angles .dot{flex:none;width:9px;height:9px;border-radius:50%;transform:translateY(-1px)}
+  .angles .v{margin-left:auto;font-family:"Barlow Condensed",Barlow,sans-serif;font-weight:600;font-size:19px;
+             color:#fff;font-variant-numeric:tabular-nums}
+  .angles .none{color:#9FB3BA}
+  .dots{display:flex;gap:7px;justify-content:center;margin:2px 0 22px;padding:0}
+  .dots button{width:8px;height:8px;padding:0;border-radius:50%;background:var(--line)}
+  .dots button[aria-current=true]{background:var(--ink)}
+
+  /* Hastighet, gamla varianten */
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;width:fit-content}
+  .seg button{background:var(--paper);color:var(--ink-soft);font-size:14px;font-weight:600;padding:7px 11px;border-radius:0;letter-spacing:.03em}
+  .seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+  .seg button+button{border-left:1px solid var(--line)}
+  .speedbox{background:var(--court);border-radius:var(--r);padding:14px 16px;display:grid;gap:10px;margin:0 0 26px}
+  .speedbox p{margin:0;font-size:15px;color:var(--ink-soft)}
+
+  /* Svarsrutan – den mörka rutan överst i förslaget (stilen finns redan i index.html, oanvänd) */
+  .verdict{background:var(--ink);color:#fff;border-radius:var(--r);padding:22px 22px 18px;margin:0 0 22px;
+           position:relative;overflow:hidden}
+  .verdict::after{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;
+                  background:var(--ball);opacity:.9}
+  .verdict>*{position:relative}
+  .verdict .kicker{font-family:"Barlow Condensed",Barlow,sans-serif;font-weight:600;font-size:17px;color:#FFB48E;
+                   display:block;margin-bottom:4px;letter-spacing:.02em}
+  .verdict h3{font-family:"Barlow Condensed",Barlow,sans-serif;font-weight:600;font-size:34px;line-height:1.05;
+              margin:0 0 10px;max-width:85%;text-wrap:balance}
+  .verdict p{color:#DCE5E9;max-width:46ch;margin:0}
+  .tally{display:flex;align-items:center;gap:12px;margin-top:16px;padding-top:14px;
+         border-top:1px solid rgba(255,255,255,.18);color:#DCE5E9;font-size:15px}
+  .tally .pips{display:flex;gap:5px}
+  .tally i{width:11px;height:11px;border-radius:50%;display:block}
+
+  /* Att jobba på */
+  .work{list-style:none;padding:0;margin:12px 0 0;border-top:1px solid var(--line)}
+  .work li{border-bottom:1px solid var(--line)}
+  .work .head{display:flex;width:100%;gap:12px;align-items:flex-start;text-align:left;background:none;
+              color:var(--ink);padding:14px 0;font-size:17px;border-radius:0;font-weight:600}
+  .work .rank{flex:none;width:26px;height:26px;border-radius:50%;background:var(--court);color:var(--ink-soft);
+              font-family:"Barlow Condensed",Barlow,sans-serif;font-size:17px;display:grid;place-items:center}
+  .work li:first-child .rank{background:var(--ball);color:#fff}
+  .work .label{flex:1}
+  .work .sub{display:block;font-weight:400;font-size:15px;color:var(--ink-soft);margin-top:3px;max-width:46ch}
+  .work .plus{flex:none;color:var(--ball);font-size:22px;line-height:1;width:18px;text-align:center}
+  .work .head[aria-expanded=true] .plus::before{content:"–"}
+  .work .head[aria-expanded=false] .plus::before{content:"+"}
+  .work .body{padding:0 0 18px 38px;max-width:56ch}
+  .work .body p{margin:0 0 10px}
+  .work .drill{background:var(--court);border-radius:8px;padding:11px 13px}
+  .work .pep{color:var(--ink-soft);border-left:3px solid var(--ball);padding-left:11px;margin-bottom:0}
+
+  /* Efter släppet */
+  .after{border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin:20px 0 0}
+  .after h3{font-family:"Barlow Condensed",Barlow,sans-serif;font-weight:600;font-size:24px;margin:0 0 8px}
+  .after p:last-child{margin-bottom:0}
+  .extra h3{font-family:"Barlow Condensed",Barlow,sans-serif;font-weight:600;font-size:19px;margin:16px 0 4px}
+  .extra ul{margin:0;padding-left:20px;color:var(--ink-soft);font-size:15px}
+  .extra li{margin:0 0 4px}
+
+  /* Mätvärden */
+  .metrics{list-style:none;padding:0;margin:0;border-top:1px solid var(--line)}
+  .metrics li{display:grid;grid-template-columns:12px 1fr auto;gap:12px;align-items:center;padding:12px 0;
+              border-bottom:1px solid var(--line)}
+  .metrics .dot{width:11px;height:11px;border-radius:50%}
+  .metrics .val{font-family:"Barlow Condensed",Barlow,sans-serif;font-weight:600;font-size:24px;font-variant-numeric:tabular-nums}
+  .metrics .ref{color:var(--ink-soft);font-size:14px}
+  .good{background:var(--ok)} .meh{background:var(--warn)} .poor{background:var(--bad)}
+  /* Skalan: riktvärdet som en sträcka, värdet som ett streck på den */
+  .scale{position:relative;height:7px;border-radius:4px;background:var(--court);margin-top:7px;max-width:230px}
+  .scale .band{position:absolute;top:0;bottom:0;background:#CDE6DA;border-radius:4px}
+  .scale .pin{position:absolute;top:-3px;width:3px;height:13px;border-radius:2px;transform:translateX(-1.5px)}
+  .scale .cap{position:absolute;top:11px;font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .metrics.scaled li{padding-bottom:26px}
+
+  details{border-top:1px solid var(--line);margin-top:22px}
+  summary{cursor:pointer;font-weight:600;margin:14px 0 6px;list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"+";display:inline-block;width:18px;color:var(--ball)}
+  details[open] summary::before{content:"–"}
+  .speedrow{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;justify-content:space-between;
+            background:var(--court);border-radius:var(--r);padding:12px 14px;margin:6px 0 16px}
+  .speedrow span{font-size:15px;color:var(--ink-soft)}
+  .share{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 8px}
+  .share button{flex:1 1 auto}
+  .again{margin-top:22px}
+
+  @media (min-width:1080px){
+    .stage{grid-template-columns:repeat(2,minmax(0,560px))}
+    [data-show=old] #v-new,[data-show=new] #v-old{display:block}
+    .switch{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){.phases{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="chrome">
+    <div class="mark"><b>Emitto</b><span>Prototyp · resultatvyn</span></div>
+    <div class="switch" id="switch" role="group" aria-label="Välj variant">
+      <button type="button" data-v="old" aria-pressed="false">Nu</button>
+      <button type="button" data-v="new" aria-pressed="true">Förslag</button>
+    </div>
+  </div>
+
+  <p class="brief">Samma skott, samma siffror, två uppställningar. Datan är <b>Jalens tvåstegsskott</b> ur facit:
+    tempo 1,05 s och raka knän vid släpp avviker, fyra mätvärden ligger inom riktvärdena. Skelettbilderna är
+    ritade för hand här – i appen är det bildrutan ur klippet med samma skelett ovanpå.</p>
+  <ul class="count" id="count"></ul>
+
+  <div class="stage" id="stage" data-show="new">
+    <section class="variant" id="v-old">
+      <p class="vhead"><b>Nu</b> tolv textblock</p>
+      <div class="app" id="app-old"></div>
+    </section>
+    <section class="variant" id="v-new">
+      <p class="vhead"><b>Förslag</b> sex block, svaret först</p>
+      <div class="app" id="app-new"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------- data
+// Ett riktigt utfall: Jalen, tvåstegsskott med paus. Texterna är rules.js egna där de finns,
+// och worker-svarets formuleringar där djupanalysen går igenom.
+const COLOR = { good:'#1F9D6A', meh:'#E0A800', poor:'#D64545' };
+const nf = (v, dec) => v.toFixed(dec).replace('.', ',');
+
+const M = [
+  { key:'kneeMin', label:'Knädjup i lägsta läget', v:100, unit:'°', dec:0, ok:[85,110], tol:12, status:'good', phase:'lowest' },
+  { key:'tLow',    label:'Tid lägsta läge → släpp', v:1.05, unit:' s', dec:2, ok:[0.5,0.9], tol:0.2, status:'poor', phase:'release' },
+  { key:'kneeRel', label:'Knävinkel vid släpp', v:172, unit:'°', dec:0, ok:[130,168], tol:8, status:'meh', phase:'release' },
+  { key:'trunk',   label:'Bållutning i lägsta läget', v:22, unit:'°', dec:0, ok:[15,35], tol:10, status:'good', phase:'lowest' },
+  { key:'elbow',   label:'Armbåge i set point', v:88, unit:'°', dec:0, ok:[80,105], tol:12, status:'good', phase:'set' },
+  { key:'relH',    label:'Släpphöjd', v:1.21, unit:' × längd', dec:2, ok:[1.15,1.35], tol:0.08, status:'good', phase:'release' },
+];
+const fmt = m => nf(m.v, m.dec) + m.unit;
+const refText = m => 'riktvärde ' + nf(m.ok[0], m.dec) + '–' + nf(m.ok[1], m.dec) + m.unit;
+
+const ISSUES = [
+  { key:'tLow', rank:1,
+    title:'Släpp bollen på vägen upp',
+    what:'Låt bollen lämna handen medan benen fortfarande sträcker sig, i stället för att stanna vid huvudet först.',
+    why:'Från lägsta läget till släpp tar det 1,05 s, mot riktvärdet 0,5–0,9. Skottet är delat i två rörelser: benen gör sitt jobb, sedan väntar bollen, sedan skjuter armen. Då tappar du en del av benkraften och armen får jobba mer än den behöver.',
+    drill:'Fånga – dippa – upp – släpp i ett andetag, tio skott. Bollen ska lämna handen innan benen är raka.',
+    pep:'Rörelsen finns redan, den är bara delad i två. Sätter du ihop den kommer räckvidden gratis.' },
+  { key:'kneeRel', rank:2,
+    title:'Släpp bollen tidigare',
+    what:'Knäna är i praktiken raka när bollen släpps – 172° mot 130–168.',
+    why:'Benkraften har redan tagit slut när bollen lämnar handen. Det är samma sak som ovan sett från benen – löser du tempot löser du den här på köpet.',
+    drill:'Skjut 10 skott och släpp bollen "för tidigt". Det som känns för tidigt är oftast lagom.',
+    pep:'Du använder redan benen ordentligt. Det handlar bara om att bollen ska lämna handen lite tidigare.' },
+];
+
+const COACH = {
+  summary:'Benen laddar bra – det som kostar är att bollen väntar på vägen upp.',
+  strengths:['Knädjupet i lägsta läget ligger mitt i riktvärdet.','Bålen är stabil genom hela laddningen.'],
+  observations:['I bilderna hålls följningen kvar efter släppet.'],
+  uncertainties:['Tempot är mätt vid 15 rutor/s, alltså på ±70 ms när. Filma i 60 bilder/s om du vill mäta det noggrannare.'],
+  after:{ title:'Landa där du hoppade',
+          text:'Du förflyttar dig ungefär 0,4 kroppslängder framåt och en fot når golvet tydligt före den andra. Att hoppa framåt på ett långt skott är normalt, men en ojämn landning gör skottet svårare att upprepa när du blir trött.' },
+};
+
+const CAVEAT = 'Sidovy, 2D-poseskattning, höger sida. Vinklar ±5°. Fotställning i bredd syns inte från den här vinkeln. Höftvinkelhastighet 318 °/s. Släpp 0,08 s efter frånskjutet. 15 analyserade rutor/s.';
+const WRITTEN = 'Texten är skriven av en språkmodell utifrån mätvärdena; ordningen i listan kommer från riktvärdena.';
+
+// ---------------------------------------------------------------- skelettbilderna
+// Platshållare. I appen är det en beskuren bildruta ur klippet med samma skelett ritat ovanpå.
+const POSES = {
+  lowest:  { ank:[138,372], knee:[180,300], hip:[130,250], sho:[152,188], elb:[192,214], wri:[174,176], head:[150,162],
+             arc:['ank','knee','hip'], val:'100°', status:'good' },
+  set:     { ank:[150,372], knee:[166,304], hip:[142,250], sho:[150,192], elb:[196,186], wri:[178,132], head:[134,166],
+             arc:['sho','elb','wri'], val:'88°', status:'good', rf:0.40 },
+  release: { ank:[152,362], knee:[158,298], hip:[150,238], sho:[155,180], elb:[168,140], wri:[178,100], head:[143,156],
+             arc:['ank','knee','hip'], val:'172°', status:'meh' },
+  follow:  { ank:[150,352], knee:[156,290], hip:[148,232], sho:[152,174], elb:[166,132], wri:[180,92], head:[140,150],
+             arc:null },
+};
+const BONES = [['ank','knee'],['knee','hip'],['hip','sho'],['sho','elb'],['elb','wri']];
+
+function arcPath(p) {
+  const [an, bn, cn] = p.arc, b = p[bn], a = p[an], c = p[cn];
+  const a0 = Math.atan2(a[1]-b[1], a[0]-b[0]), a1 = Math.atan2(c[1]-b[1], c[0]-b[0]);
+  let d = a1 - a0;
+  while (d <= -Math.PI) d += 2*Math.PI;
+  while (d > Math.PI) d -= 2*Math.PI;
+  const r = Math.min(Math.hypot(a[0]-b[0], a[1]-b[1]), Math.hypot(c[0]-b[0], c[1]-b[1])) * (p.rf || 0.55);
+  const P = (ang, rad) => [b[0] + rad*Math.cos(ang), b[1] + rad*Math.sin(ang)];
+  const s = P(a0, r), e = P(a1, r), lab = P(a0 + d/2, r + 18);
+  return { d:`M ${s[0].toFixed(1)} ${s[1].toFixed(1)} A ${r.toFixed(1)} ${r.toFixed(1)} 0 0 ${d > 0 ? 1 : 0} ${e[0].toFixed(1)} ${e[1].toFixed(1)}`, lab };
+}
+
+function poseSVG(key) {
+  const p = POSES[key], c = p.arc ? COLOR[p.status] : null;
+  const bones = BONES.map(([x, y]) =>
+    `<line x1="${p[x][0]}" y1="${p[x][1]}" x2="${p[y][0]}" y2="${p[y][1]}"/>`).join('');
+  const joints = ['ank','knee','hip','sho','elb','wri'].map(j =>
+    `<circle cx="${p[j][0]}" cy="${p[j][1]}" r="4" fill="#EAF0F2"/>`).join('');
+  let arc = '';
+  if (p.arc) {
+    const a = arcPath(p);
+    arc = `<path d="${a.d}" fill="none" stroke="${c}" stroke-width="4" stroke-linecap="round"/>
+           <text x="${a.lab[0].toFixed(1)}" y="${a.lab[1].toFixed(1)}" fill="${c}" font-size="21"
+                 font-family="Barlow Condensed, Barlow, sans-serif" font-weight="600"
+                 text-anchor="middle" dominant-baseline="middle">${p.val}</text>`;
+  }
+  return `<svg class="shot" viewBox="0 0 300 400" role="img" aria-label="Skelett, platshållare">
+    <line x1="20" y1="384" x2="280" y2="384" stroke="#24424C" stroke-width="3"/>
+    <g stroke="#EAF0F2" stroke-width="5" stroke-linecap="round">${bones}</g>
+    <circle cx="${p.head[0]}" cy="${p.head[1]}" r="17" fill="none" stroke="#EAF0F2" stroke-width="5"/>
+    ${joints}${arc}</svg>`;
+}
+
+const PHASES = [
+  { key:'lowest',  name:'Lägsta läget', t:'1,12 s' },
+  { key:'set',     name:'Set point',    t:'1,74 s' },
+  { key:'release', name:'Släpp',        t:'2,17 s' },
+  { key:'follow',  name:'Följning',     t:'2,38 s' },
+];
+const forPhase = k => M.filter(m => m.phase === k);
+
+// ---------------------------------------------------------------- delar
+const angleRows = (k, withRef) => {
+  const rows = forPhase(k);
+  if (!rows.length) return `<li class="none">${withRef ? 'Inget riktvärde mäts i den här fasen. Den är med för att du ska se att rörelsen fortsätter efter släppet.' : 'Inget mått mäts här.'}</li>`;
+  return rows.map(m => `<li><span class="dot" style="background:${COLOR[m.status]}"></span>
+    <span>${m.label}${withRef ? `<br><span class="time">${refText(m)}</span>` : ''}</span>
+    <span class="v">${fmt(m)}</span></li>`).join('');
+};
+
+const shareBlock = `<div class="share">
+  <button type="button">Dela bild</button>
+  <button type="button" class="ghost">Dela beskrivning</button></div>`;
+
+const metricRows = scaled => M.map(m => {
+  let bar = '';
+  if (scaled) {
+    const lo = m.ok[0] - 2*m.tol, hi = m.ok[1] + 2*m.tol, span = hi - lo;
+    const pct = x => Math.max(0, Math.min(100, ((x - lo)/span)*100));
+    bar = `<div class="scale"><i class="band" style="left:${pct(m.ok[0])}%;right:${(100-pct(m.ok[1])).toFixed(1)}%"></i>
+      <i class="pin" style="left:${pct(m.v)}%;background:${COLOR[m.status]}"></i>
+      <span class="cap" style="left:0">${nf(m.ok[0], m.dec)}</span>
+      <span class="cap" style="left:${pct(m.ok[1]).toFixed(1)}%">${nf(m.ok[1], m.dec)}</span></div>`;
+  }
+  return `<li><span class="dot ${m.status}"></span>
+    <span>${m.label}${scaled ? bar : `<br><span class="ref">${refText(m)}</span>`}</span>
+    <span class="val">${fmt(m)}</span></li>`;
+}).join('');
+
+const seg = ['Auto','Normal','2×','4×','8×'].map((s, i) =>
+  `<button type="button" aria-pressed="${i === 0}">${s}</button>`).join('');
+
+// ---------------------------------------------------------------- variant: som det ser ut nu
+function renderOld(el) {
+  el.innerHTML = `
+    <h2>Fyra faser</h2>
+    <p class="quiet">Svep mellan faserna. Tryck på en bild för att se vinklarna.</p>
+    <div class="phases">${PHASES.map(p => `
+      <figure class="phase" data-open="false">
+        ${poseSVG(p.key)}
+        <figcaption><span class="name">${p.name}</span><span class="time">${p.t}</span></figcaption>
+        <button type="button" class="toggle">Visa vinklar</button>
+        <ul class="angles" hidden>${angleRows(p.key, true)}</ul>
+      </figure>`).join('')}</div>
+    <div class="dots"></div>
+
+    <div class="speedbox">
+      <p>Analyserad i normal fart. Hastigheten är gissad ur hoppets fria fall.</p>
+      <div class="seg">${seg}</div>
+    </div>
+
+    <h2>Att jobba på</h2>
+    <p class="quiet">4 av 6 mätvärden ligger inom riktvärdena.</p>
+    <p>${COACH.summary}</p>
+    <ol class="work">${ISSUES.map(i => `
+      <li>
+        <button type="button" class="head" aria-expanded="false">
+          <span class="rank">${i.rank}</span><span class="label">${i.title}</span>
+          <span class="plus" aria-hidden="true"></span></button>
+        <div class="body" hidden>
+          <p>${i.what}</p><p>${i.why}</p>
+          <p class="drill"><strong>Övning:</strong> ${i.drill}</p>
+          <p class="pep">${i.pep}</p></div>
+      </li>`).join('')}</ol>
+
+    <div class="after">
+      <h3>Efter släppet</h3>
+      <p><strong>${COACH.after.title}</strong></p>
+      <p>${COACH.after.text}</p>
+    </div>
+
+    <div class="extra">
+      <h3>Det här sitter</h3><ul>${COACH.strengths.map(s => `<li>${s}</li>`).join('')}</ul>
+      <h3>Sett i bilderna</h3><ul>${COACH.observations.map(s => `<li>${s}</li>`).join('')}</ul>
+      <h3>Så säkert är det mätt</h3><ul>${COACH.uncertainties.map(s => `<li>${s}</li>`).join('')}</ul>
+    </div>
+
+    ${shareBlock}
+    <p class="quiet">Bilden visar faserna med vinklarna. Beskrivningen är hela texten. Båda skapas på din enhet.</p>
+
+    <details><summary>Alla mätvärden</summary><ul class="metrics">${metricRows(false)}</ul></details>
+    <p class="quiet">${CAVEAT} ${WRITTEN}</p>
+    <button type="button" class="ghost again">Nytt klipp</button>`;
+}
+
+// ---------------------------------------------------------------- variant: förslaget
+function renderNew(el) {
+  const pips = M.map(m => `<i style="background:${COLOR[m.status]}"></i>`).join('');
+  el.innerHTML = `
+    <div class="verdict">
+      <span class="kicker">Viktigast först</span>
+      <h3>${ISSUES[0].title}</h3>
+      <p>${COACH.summary}</p>
+      <div class="tally"><span class="pips">${pips}</span><span>4 av 6 mätvärden inom riktvärdet</span></div>
+    </div>
+
+    <div class="phases">${PHASES.map(p => `
+      <figure class="phase">
+        ${poseSVG(p.key)}
+        <figcaption><span class="name">${p.name}</span><span class="time">${p.t}</span></figcaption>
+        <ul class="angles">${angleRows(p.key, false)}</ul>
+      </figure>`).join('')}</div>
+    <div class="dots"></div>
+
+    <h2>Att jobba på</h2>
+    <ol class="work">${ISSUES.map((i, n) => `
+      <li>
+        <button type="button" class="head" aria-expanded="${n === 0}">
+          <span class="rank">${i.rank}</span>
+          <span class="label">${i.title}<span class="sub">${i.what}</span></span>
+          <span class="plus" aria-hidden="true"></span></button>
+        <div class="body"${n === 0 ? '' : ' hidden'}>
+          <p>${i.why}</p>
+          <p class="drill"><strong>Övning:</strong> ${i.drill}</p></div>
+      </li>`).join('')}</ol>
+
+    <div class="after">
+      <h3>Efter släppet</h3>
+      <p><strong>${COACH.after.title}</strong></p>
+      <p>${COACH.after.text} ${COACH.observations[0]}</p>
+    </div>
+
+    ${shareBlock}
+
+    <details><summary>Om mätningen</summary>
+      <div class="speedrow"><span>Analyserad i normal fart, gissad ur hoppets fria fall.</span>
+        <div class="seg">${seg}</div></div>
+      <ul class="metrics scaled">${metricRows(true)}</ul>
+      <p class="quiet" style="margin-top:12px">${COACH.uncertainties[0]}</p>
+      <p class="quiet">${CAVEAT} ${WRITTEN}</p>
+    </details>
+    <button type="button" class="ghost again">Nytt klipp</button>`;
+}
+
+// ---------------------------------------------------------------- beteende
+function wire(root) {
+  root.querySelectorAll('.work .head').forEach(head => {
+    head.addEventListener('click', () => {
+      const on = head.getAttribute('aria-expanded') === 'false';
+      head.setAttribute('aria-expanded', String(on));
+      head.nextElementSibling.hidden = !on;
+      tally();
+    });
+  });
+  root.querySelectorAll('.phase .toggle').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const fig = btn.closest('.phase'), on = fig.dataset.open === 'false';
+      fig.dataset.open = String(on);
+      fig.querySelector('.angles').hidden = !on;
+      btn.textContent = on ? 'Dölj vinklar' : 'Visa vinklar';
+      tally();
+    });
+  });
+  const strip = root.querySelector('.phases'), dots = root.querySelector('.dots');
+  const figs = [...strip.children];
+  figs.forEach((fig, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('aria-label', `Fas ${i + 1}`);
+    b.setAttribute('aria-current', String(i === 0));
+    b.addEventListener('click', () => fig.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' }));
+    dots.appendChild(b);
+  });
+  strip.addEventListener('scroll', () => {
+    const mid = strip.scrollLeft + strip.clientWidth / 2;
+    let near = 0, best = Infinity;
+    figs.forEach((f, i) => {
+      const d = Math.abs(f.offsetLeft + f.offsetWidth / 2 - mid);
+      if (d < best) { best = d; near = i; }
+    });
+    [...dots.children].forEach((d, i) => d.setAttribute('aria-current', String(i === near)));
+  }, { passive:true });
+  root.querySelector('details')?.addEventListener('toggle', tally);
+}
+
+// Synlig text: allt som står framme utan att man öppnar något. Räknas likadant i båda
+// varianterna, så siffran går att jämföra.
+function visibleText(root) {
+  const clone = root.cloneNode(true);
+  clone.querySelectorAll('[hidden]').forEach(el => el.remove());
+  clone.querySelectorAll('details:not([open]) *:not(summary)').forEach(el => el.remove());
+  return clone.textContent.replace(/\s+/g, ' ').trim();
+}
+
+// Hur långt man måste läsa innan det står vad man ska göra. Det är den siffra som ändras mest –
+// mängden text är ungefär densamma, den står bara på ett annat ställe.
+function leadIn(root) {
+  const i = visibleText(root).indexOf('Släpp bollen på vägen upp');
+  return i < 0 ? 0 : i;
+}
+
+function tally() {
+  const oldApp = document.getElementById('app-old'), newApp = document.getElementById('app-new');
+  document.getElementById('count').innerHTML =
+    `<li>Textblock <b>12</b> → <b>6</b></li>
+     <li>Tecken innan svaret <b>${leadIn(oldApp)}</b> → <b>${leadIn(newApp)}</b></li>
+     <li>Meta-texter utspridda <b>4</b> → <b>1</b></li>
+     <li>Synlig text <b>${visibleText(oldApp).length}</b> → <b>${visibleText(newApp).length}</b> tecken</li>`;
+}
+
+renderOld(document.getElementById('app-old'));
+renderNew(document.getElementById('app-new'));
+wire(document.getElementById('app-old'));
+wire(document.getElementById('app-new'));
+tally();
+
+const stage = document.getElementById('stage');
+document.getElementById('switch').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  stage.dataset.show = btn.dataset.v;
+  [...e.currentTarget.children].forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+});
+</script>
+</body>
+</html>
