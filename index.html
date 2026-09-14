@@ -56,23 +56,36 @@
   .status{color:var(--ink-soft);font-size:15px;min-height:1.4em}
   .error{background:#FBEDED;border-left:4px solid var(--bad);padding:12px 14px;border-radius:6px}
 
-  /* Resultat */
-  #strip{width:100%;border-radius:var(--r);display:none}
-  .focus{background:var(--ink);color:#fff;border-radius:var(--r);padding:22px 22px 20px;margin:20px 0;position:relative;overflow:hidden}
-  .focus::after{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;background:var(--ball);opacity:.9}
-  .focus>*{position:relative}
-  .focus .kicker{font-family:"Barlow Condensed";font-weight:600;font-size:17px;color:#FFB48E;margin-bottom:6px}
-  .focus h3{font-family:"Barlow Condensed";font-weight:600;font-size:34px;line-height:1.05;margin:0 0 12px;max-width:85%}
-  .focus p{color:#DCE5E9;max-width:52ch}
-  .focus .drill{border-top:1px solid rgba(255,255,255,.18);margin-top:14px;padding-top:12px;color:#fff}
+  /* Resultat. Svarsrutan står först: rubriken på det som ligger överst i listan, och den
+     sammanfattande meningen när djupanalysen skrivit en. Utan den står bara rubriken. */
+  .verdict{background:var(--ink);color:#fff;border-radius:var(--r);padding:22px 22px 18px;margin:0 0 22px;position:relative;overflow:hidden}
+  .verdict::after{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;background:var(--ball);opacity:.9}
+  .verdict>*{position:relative}
+  .verdict .kicker{display:block;font-family:"Barlow Condensed";font-weight:600;font-size:17px;color:#FFB48E;margin-bottom:4px}
+  .verdict h3{font-family:"Barlow Condensed";font-weight:600;font-size:34px;line-height:1.05;margin:0 0 10px;max-width:85%}
+  .verdict p{color:#DCE5E9;max-width:46ch;margin:0}
+  /* Prickarna är mätvärdenas status i listans ordning. Det som ligger inom riktvärdena sägs
+     alltså först, som färg och siffra, i stället för som en egen mening ovanför listan. */
+  .tally{display:flex;align-items:center;gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.18);color:#DCE5E9;font-size:15px}
+  .tally .pips{display:flex;gap:5px}
+  .tally i{width:11px;height:11px;border-radius:50%;display:block}
   .metrics{list-style:none;padding:0;margin:0;border-top:1px solid var(--line)}
   .metrics li{display:grid;grid-template-columns:12px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
   .metrics .dot{width:11px;height:11px;border-radius:50%}
   .metrics .val{font-family:"Barlow Condensed";font-weight:600;font-size:24px;font-variant-numeric:tabular-nums}
-  .metrics .ref{color:var(--ink-soft);font-size:14px}
+  /* Riktvärdet som en sträcka, värdet som ett streck på den: var värdet ligger syns utan att
+     man läser två tal till. Skalan sträcker sig två toleranser utanför riktvärdet åt varje
+     håll, så ett värde långt utanför hamnar vid kanten i stället för utanför rutan. */
+  .metrics li{padding-bottom:28px}
+  .scale{position:relative;height:7px;border-radius:4px;background:var(--court);margin-top:8px;max-width:240px}
+  .scale .band{position:absolute;top:0;bottom:0;background:#CDE6DA;border-radius:4px}
+  .scale .pin{position:absolute;top:-3px;width:3px;height:13px;border-radius:2px;transform:translateX(-1.5px)}
+  .scale .cap{position:absolute;top:12px;font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
   .good{background:var(--ok)} .meh{background:var(--warn)} .poor{background:var(--bad)}
   .quiet{color:var(--ink-soft);font-size:15px}
+  details{border-top:1px solid var(--line);margin-top:26px}
   details summary{cursor:pointer;font-weight:600;margin:14px 0 6px;list-style:none}
+  details summary::-webkit-details-marker{display:none}
   details summary::before{content:"+";display:inline-block;width:18px;color:var(--ball)}
   details[open] summary::before{content:"–"}
   footer{margin-top:40px;color:var(--ink-soft);font-size:14px}
@@ -87,8 +100,8 @@
   /* Hastighet – filens egenskap, inte spelarens. Lågmäld, Auto räcker för de flesta. */
   .speed{display:grid;gap:7px;margin-top:16px;padding-top:15px;border-top:1px solid var(--line)}
   .speed .k{font-size:15px;color:var(--ink-soft)}
-  .speedbox{background:var(--court);border-radius:var(--r);padding:14px 16px;display:grid;gap:10px;margin:0 0 26px}
-  .speedbox p{margin:0;font-size:15px;color:var(--ink-soft);max-width:56ch}
+  .speedrow{background:var(--court);border-radius:var(--r);padding:13px 15px;display:grid;gap:10px;margin:6px 0 18px}
+  .speedrow p{margin:0;font-size:15px;color:var(--ink-soft);max-width:56ch}
 
   /* Exempelklipp – lågmälda, det är inte sidans huvudhandling */
   .examples h2{font-size:24px;margin:34px 0 12px}
@@ -112,10 +125,7 @@
   .phase figcaption{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:11px 14px 0;color:#fff}
   .phase .name{font-family:"Barlow Condensed";font-weight:600;font-size:22px}
   .phase .time{color:#FFB48E;font-size:14px;font-variant-numeric:tabular-nums}
-  .phase .toggle{display:block;width:100%;text-align:left;background:none;color:#FFB48E;font-size:15px;padding:8px 14px 13px}
-  .phase .toggle::before{content:"+";display:inline-block;width:17px;font-weight:600}
-  .phase[data-open=true] .toggle::before{content:"–"}
-  .angles{list-style:none;margin:0;padding:0 14px 14px;color:#DCE5E9;font-size:15px}
+  .angles{list-style:none;margin:0;padding:6px 14px 14px;color:#DCE5E9;font-size:15px}
   .angles li{display:flex;gap:9px;align-items:baseline;padding:4px 0}
   .angles .dot{flex:none;width:9px;height:9px;border-radius:50%;transform:translateY(-1px)}
   .angles .v{margin-left:auto;font-family:"Barlow Condensed";font-weight:600;font-size:19px;color:#fff;font-variant-numeric:tabular-nums}
@@ -126,30 +136,25 @@
   /* Att jobba på – prioriterad ordning, en rad per sak */
   .work{list-style:none;padding:0;margin:14px 0 0;border-top:1px solid var(--line)}
   .work li{border-bottom:1px solid var(--line)}
-  .work .head{display:flex;width:100%;gap:12px;align-items:center;text-align:left;background:none;color:var(--ink);padding:15px 0;font-size:17px;border-radius:0}
+  .work .head{display:flex;width:100%;gap:12px;align-items:flex-start;text-align:left;background:none;color:var(--ink);padding:15px 0;font-size:17px;border-radius:0;font-weight:600}
   .work .rank{flex:none;width:26px;height:26px;border-radius:50%;background:var(--court);color:var(--ink-soft);font-family:"Barlow Condensed";font-size:17px;display:grid;place-items:center}
   .work li:first-child .rank{background:var(--ball);color:#fff}
   .work .label{flex:1}
+  .work .sub{display:block;font-weight:400;font-size:15px;color:var(--ink-soft);margin-top:3px;max-width:46ch}
   .work .plus{flex:none;color:var(--ball);font-size:22px;line-height:1;width:18px;text-align:center}
   .work .head[aria-expanded=true] .plus::before{content:"–"}
   .work .head[aria-expanded=false] .plus::before{content:"+"}
   .work .body{padding:0 0 18px 38px;max-width:56ch}
   .work .body p{margin:0 0 10px}
-  .work .drill{background:var(--court);border-radius:8px;padding:11px 13px}
-  .work .pep{color:var(--ink-soft);border-left:3px solid var(--ball);padding-left:11px;margin-bottom:0}
-  .allclear{background:var(--ink);color:#fff;border-radius:var(--r);padding:20px 22px;margin:14px 0 0}
-  .allclear h3{font-family:"Barlow Condensed";font-weight:600;font-size:30px;margin:0 0 10px}
-  .allclear p{color:#DCE5E9}
-  /* Sammanfattningen och det som inte får plats i listan. */
-  #coachnote{max-width:56ch}
+  .drill{background:var(--court);border-radius:8px;padding:11px 13px}
+  /* Inget avviker: rubriken står i svarsrutan, här blir det bara varför och övningen. */
+  .allclear{margin:12px 0 0;max-width:56ch}
+  .allclear p{margin:0 0 10px}
   .after{border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin:20px 0 0}
   .after h3{font-family:"Barlow Condensed";font-weight:600;font-size:24px;margin:0 0 8px;display:flex;gap:10px;align-items:baseline}
   .after p{margin:0 0 8px}
   .after p:last-child{margin-bottom:0}
-  #coachextra{margin-top:18px}
-  #coachextra h3{font-family:"Barlow Condensed";font-weight:600;font-size:19px;margin:16px 0 4px}
-  #coachextra ul{margin:0;padding-left:20px;color:var(--ink-soft);font-size:15px}
-  #coachextra li{margin:0 0 4px}
+  #disagreement{margin-top:14px}
   .age input{font:inherit;width:5.5em;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}
 
   /* Dela – bilden hamnar i chatten, sidan är för den som vill spara hela rapporten */
@@ -226,36 +231,39 @@
   </section>
 
   <section id="view-result" hidden>
-    <h2 data-i18n="phasesTitle"></h2>
-    <p class="quiet" data-i18n="phaseHint"></p>
+    <!-- Svaret först. Rubriken på det som ligger överst i listan, och sammanfattningen när
+         djupanalysen skrivit en. Prickarna säger vad som ligger inom riktvärdena. -->
+    <div class="verdict" id="verdict"></div>
+
     <div class="phases" id="phases"></div>
     <div class="dots" id="dots"></div>
 
-    <div class="speedbox">
-      <p id="speednote"></p>
-      <div class="seg" id="speed-result"></div>
-    </div>
-
     <h2 data-i18n="workTitle"></h2>
-    <p class="quiet" id="goodnote"></p>
-    <p id="coachnote"></p>
     <ol class="work" id="work"></ol>
+    <div id="allclear"></div>
+    <p class="quiet" id="disagreement"></p>
 
     <!-- Efter släppet. Egen ruta, aldrig en rad i listan: listan är rules.js. -->
     <div class="after" id="after" hidden></div>
-    <div id="coachextra"></div>
 
     <div class="share">
       <button id="share-image" data-i18n="shareImage"></button>
       <button id="share-text" class="ghost" data-i18n="shareText"></button>
     </div>
-    <p class="quiet" id="sharenote" data-i18n="shareNote"></p>
+    <p class="quiet" id="sharenote"></p>
 
-    <details>
-      <summary data-i18n="detailsTitle"></summary>
+    <!-- Allt som är om mätningen och inte om skottet ligger här: hastigheten, mätvärdena,
+         hur säkert de är mätta och förbehållet. Fyra ställen förr, ett nu. -->
+    <details id="about">
+      <summary data-i18n="aboutTitle"></summary>
+      <div class="speedrow">
+        <p id="speednote"></p>
+        <div class="seg" id="speed-result"></div>
+      </div>
       <ul class="metrics" id="metrics"></ul>
+      <p class="quiet" id="uncertainty"></p>
+      <p class="quiet" id="caveat"></p>
     </details>
-    <p class="quiet" id="caveat"></p>
     <button id="again" class="ghost" data-i18n="newClip"></button>
   </section>
 

@@ -3,7 +3,7 @@
 // rutor som redan lästs av – aldrig klippet. Se coach.js.
 import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 import { pickSide, signals, findPhases, metrics, estimateSpeed, rescaleTime, postRelease, visibilityByMetric } from './analysis.js';
-import { prioritize, issueList, allClear, goodNote, labelOf, refOf, formatValue, METRIC_PHASE } from './rules.js';
+import { prioritize, issueList, allClear, goodNote, labelOf, refOf, formatValue, formatPlain, METRIC_PHASE } from './rules.js';
 import { t, getLang, setLang, applyStatic, LANGS } from './i18n.js';
 import { drawFrame, personCrop, STATUS_COLOR, ARC } from './draw.js';
 import { shareImage, reportText, deliver, deliverText, stamp } from './share.js';
@@ -368,83 +368,84 @@ function drawPhase(shot, side, arcs) {
 const fmt = (value, key) => formatValue(key, value, getLang());
 
 function renderResult(data) {
-  const { shots, side, m, ph, prio, speed } = data;
   const lang = getLang();
-  const byPhase = {};
-  for (const g of prio.graded) (byPhase[METRIC_PHASE[g.key]] ||= []).push(g);
+  // Listan är rules.js ordning med modellens ord ovanpå där nyckeln stämmer. Den räknas fram
+  // en gång och används av både svarsrutan och listan, så de aldrig kan säga olika saker.
+  const issues = merge(issueList(data.prio, lang, 5), coachOf(data));
 
-  // Faserna
-  const wrap = $('phases');
-  wrap.innerHTML = '';
-  for (const shot of shots) {
-    const fig = document.createElement('figure');
-    fig.className = 'phase';
-    fig.dataset.open = 'false';
-    const view = document.createElement('canvas');
-    shot.view = view;
-    const cap = document.createElement('figcaption');
-    cap.innerHTML = `<span class="name">${t(shot.label)}</span><span class="time">${shot.time.toFixed(2)} s</span>`;
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'toggle';
-    toggle.textContent = t('showAngles');
-    const list = document.createElement('ul');
-    list.className = 'angles';
-    list.hidden = true;
-
-    const graded = byPhase[shot.key] || [];
-    list.innerHTML = graded.length
-      ? graded.map(g => `<li><span class="dot" style="background:${STATUS_COLOR[g.status]}"></span>
-          <span>${labelOf(g.key, lang)}<br><span class="time">${t('reference')} ${fmt(refOf(g.key).ok[0], g.key)}–${fmt(refOf(g.key).ok[1], g.key)}</span></span>
-          <span class="v">${fmt(g.value, g.key)}</span></li>`).join('')
-      : `<li>${t('noMetricsHere')}</li>`;
-
-    const open = () => {
-      const on = fig.dataset.open === 'false';
-      fig.dataset.open = String(on);
-      list.hidden = !on;
-      toggle.textContent = on ? t('hideAngles') : t('showAngles');
-      drawPhase(shot, side, on ? graded.filter(g => ARC[g.key]) : []);
-    };
-    toggle.addEventListener('click', e => { e.stopPropagation(); open(); });
-    fig.addEventListener('click', open);
-
-    fig.append(view, cap, toggle, list);
-    wrap.appendChild(fig);
-    drawPhase(shot, side, []);
-  }
-  buildDots(wrap);
-
-  renderWork(data, lang);
-
-  // Alla mätvärden
-  $('metrics').innerHTML = prio.graded.map(g => `<li>
-    <span class="dot ${g.status}"></span>
-    <span>${labelOf(g.key, lang)}<br><span class="ref">${t('reference')} ${fmt(refOf(g.key).ok[0], g.key)}–${fmt(refOf(g.key).ok[1], g.key)}</span></span>
-    <span class="val">${fmt(g.value, g.key)}</span></li>`).join('');
-
-  // Hastigheten analysen räknar i, och möjligheten att ändra den
-  $('speednote').textContent = speedNote(data);
-  buildSpeedPicker($('speed-result'), recalculate);
-
-  // Förbehåll
-  $('caveat').textContent = caveatNote(data);
+  renderVerdict(data, issues, lang);
+  renderPhases(data, lang);
+  renderWork(data, issues, lang);
+  renderAbout(data, lang);
   renderExtras(data);
   prepareShare(data);
   recoachOnLanguageChange(data);
 }
 
-// Att jobba på. Ordningen kommer alltid från rules.js. Den skrivna texten läggs bara ovanpå de
-// poster som har samma nyckel – merge() i coach.js gör inget annat, och stämmer inte nyckeln
-// behåller posten sin egen text.
-function renderWork(data, lang) {
-  const issues = merge(issueList(data.prio, lang, 5), coachOf(data));
-  $('goodnote').textContent = goodNote(data.prio, lang);
-  const ol = $('work');
+// Svaret först: rubriken på det som ligger överst i listan, och sammanfattningen när
+// djupanalysen skrivit en. Utan modellen står bara rubriken – posten själv säger vad man
+// ska göra en rad längre ner, och att skriva samma mening två gånger gör den inte sannare.
+//
+// Prickarna är mätvärdenas status i listans ordning. Det är där "säg vad som är bra först"
+// tar vägen: som färg och siffra i stället för som en mening ovanför listan.
+function renderVerdict(data, issues, lang) {
+  const res = coachOf(data);
+  const clear = allClear(lang);
+  const head = issues.length
+    ? { kicker: t('verdictFocus'), title: issues[0].title, lead: res?.summary || '' }
+    : { kicker: t('verdictClear'), title: clear.title, lead: res?.summary || clear.why };
+  const pips = data.prio.graded.map(g => `<i style="background:${STATUS_COLOR[g.status]}"></i>`).join('');
+  $('verdict').innerHTML = `<span class="kicker">${esc(head.kicker)}</span>
+    <h3>${esc(head.title)}</h3>
+    ${head.lead ? `<p>${esc(head.lead)}</p>` : ''}
+    <div class="tally"><span class="pips">${pips}</span><span>${esc(goodNote(data.prio, lang))}</span></div>`;
+}
+
+// Faserna. Vinklarna ritas direkt och står under bilden – knappen som skulle tryckas först
+// var ett steg mellan användaren och det hon kom för. Riktvärdena står i fotnoten i stället,
+// en gång, med en skala som visar var värdet ligger.
+function renderPhases(data, lang) {
+  const { shots, side, prio } = data;
+  const byPhase = {};
+  for (const g of prio.graded) (byPhase[METRIC_PHASE[g.key]] ||= []).push(g);
+
+  const wrap = $('phases');
+  wrap.innerHTML = '';
+  for (const shot of shots) {
+    const fig = document.createElement('figure');
+    fig.className = 'phase';
+    const view = document.createElement('canvas');
+    shot.view = view;
+    const cap = document.createElement('figcaption');
+    cap.innerHTML = `<span class="name">${esc(t(shot.label))}</span><span class="time">${shot.time.toFixed(2)} s</span>`;
+    const graded = byPhase[shot.key] || [];
+    const list = document.createElement('ul');
+    list.className = 'angles';
+    list.innerHTML = graded.length
+      ? graded.map(g => `<li><span class="dot" style="background:${STATUS_COLOR[g.status]}"></span>
+          <span>${esc(labelOf(g.key, lang))}</span><span class="v">${fmt(g.value, g.key)}</span></li>`).join('')
+      : `<li>${esc(t('noMetricsHere'))}</li>`;
+
+    fig.append(view, cap, list);
+    wrap.appendChild(fig);
+    drawPhase(shot, side, graded.filter(g => ARC[g.key]));
+  }
+  buildDots(wrap);
+}
+
+// Att jobba på. Ordningen kommer alltid från rules.js. Varje post visar vad man ska göra
+// redan hopfälld – en rubrik ensam säger sällan det – och den första står öppen, så att
+// listan svarar innan man har tryckt på något.
+function renderWork(data, issues, lang) {
+  const ol = $('work'), box = $('allclear');
   ol.innerHTML = '';
+  box.innerHTML = '';
   if (!issues.length) {
-    const a = allClear(lang);
-    ol.innerHTML = `<div class="allclear"><h3>${esc(a.title)}</h3><p>${esc(a.why)}</p><p>${esc(a.drill)}</p></div>`;
+    const a = allClear(lang), res = coachOf(data);
+    // Rubriken står redan i svarsrutan, och `why` bara om den inte användes där.
+    box.className = 'allclear';
+    box.innerHTML = `${res?.summary ? `<p>${esc(a.why)}</p>` : ''}
+      <p class="drill"><strong>${esc(t('drill'))}:</strong> ${esc(a.drill)}</p>`;
     return;
   }
   issues.forEach((it, i) => {
@@ -452,14 +453,17 @@ function renderWork(data, lang) {
     const head = document.createElement('button');
     head.type = 'button';
     head.className = 'head';
-    head.setAttribute('aria-expanded', 'false');
-    head.innerHTML = `<span class="rank">${i + 1}</span><span class="label">${esc(it.title)}</span><span class="plus" aria-hidden="true"></span>`;
+    head.setAttribute('aria-expanded', String(i === 0));
+    head.innerHTML = `<span class="rank">${i + 1}</span>
+      <span class="label">${esc(it.title)}${it.what ? `<span class="sub">${esc(it.what)}</span>` : ''}</span>
+      <span class="plus" aria-hidden="true"></span>`;
     const body = document.createElement('div');
     body.className = 'body';
-    body.hidden = true;
-    body.innerHTML = `${it.what ? `<p>${esc(it.what)}</p>` : ''}<p>${esc(it.why)}</p>
-      <p class="drill"><strong>${esc(t('drill'))}:</strong> ${esc(it.drill)}</p>
-      <p class="pep">${esc(it.pep)}</p>`;
+    body.hidden = i !== 0;
+    // Peppningen följer med i den delade texten, men inte hit: på skärmen blev den en fjärde
+    // rad som ingen läste, och listan ska gå att skumma.
+    body.innerHTML = `<p>${esc(it.why)}</p>
+      <p class="drill"><strong>${esc(t('drill'))}:</strong> ${esc(it.drill)}</p>`;
     head.addEventListener('click', () => {
       const on = head.getAttribute('aria-expanded') === 'false';
       head.setAttribute('aria-expanded', String(on));
@@ -468,6 +472,33 @@ function renderWork(data, lang) {
     li.append(head, body);
     ol.appendChild(li);
   });
+}
+
+// Om mätningen: hastigheten, mätvärdena, hur säkert de är mätta och förbehållet. Allt som är
+// om mätningen och inte om skottet, på ett ställe i stället för fyra.
+function renderAbout(data, lang) {
+  $('speednote').textContent = speedNote(data);
+  buildSpeedPicker($('speed-result'), recalculate);
+  $('metrics').innerHTML = data.prio.graded.map(g => `<li>
+    <span class="dot ${g.status}"></span>
+    <span>${esc(labelOf(g.key, lang))}${scaleBar(g)}</span>
+    <span class="val">${fmt(g.value, g.key)}</span></li>`).join('');
+  $('uncertainty').textContent = coachOf(data)?.uncertainties?.join(' ') || '';
+  $('caveat').textContent = caveatNote(data);
+}
+
+// Riktvärdet som en sträcka och värdet som ett streck på den. Skalan går två toleranser
+// utanför riktvärdet åt varje håll: då hamnar även ett värde långt utanför kvar på sträckan,
+// vid kanten, i stället för utanför rutan.
+function scaleBar(g) {
+  const r = refOf(g.key);
+  const lo = r.ok[0] - 2 * r.tol, hi = r.ok[1] + 2 * r.tol;
+  const at = x => Math.max(0, Math.min(100, ((x - lo) / (hi - lo)) * 100)).toFixed(1);
+  return `<div class="scale">
+    <i class="band" style="left:${at(r.ok[0])}%;right:${(100 - at(r.ok[1])).toFixed(1)}%"></i>
+    <i class="pin" style="left:${at(g.value)}%;background:${STATUS_COLOR[g.status]}"></i>
+    <span class="cap" style="left:0">${formatPlain(g.key, r.ok[0])}</span>
+    <span class="cap" style="left:${at(r.ok[1])}%">${formatPlain(g.key, r.ok[1])}</span></div>`;
 }
 
 // De två meningarna som sammanfattar hur resultatet ska läsas. Egna funktioner därför att
@@ -538,27 +569,32 @@ async function recoachOnLanguageChange(data) {
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-// Sammanfattningen, rutan om det som händer efter släppet, och det som inte får plats i listan.
+// Det som inte är en rad i listan: rutan om det som händer efter släppet, och invändningen.
+//
+// Observationerna ur bilderna hör ihop med den rutan – båda handlar om det rules.js inte mäter –
+// så de står där i stället för under en egen rubrik. Osäkerheten hör till mätningen och ligger i
+// fotnoten (renderAbout). Modellens strengths visas inte: prickarna och sammanfattningen säger
+// redan vad som är bra, och tre varianter av samma sak i rad var en av de saker som gjorde
+// resultatet långt.
 function renderExtras(data) {
   const res = coachOf(data);
-  const note = $('coachnote'), box = $('after'), extra = $('coachextra');
+  const box = $('after');
+  const seen = res?.observations?.length ? res.observations.join(' ') : '';
 
-  note.textContent = res?.summary || '';
+  if (res?.after) {
+    box.hidden = false;
+    box.innerHTML = `<h3>${esc(t('afterTitle'))}</h3>
+      <p><strong>${esc(res.after.title)}</strong></p>
+      <p>${esc(seen ? `${res.after.text} ${seen}` : res.after.text)}</p>`;
+  } else if (seen) {
+    box.hidden = false;
+    box.innerHTML = `<h3>${esc(t('observationsTitle'))}</h3><p>${esc(seen)}</p>`;
+  } else {
+    box.hidden = true;
+    box.innerHTML = '';
+  }
 
-  box.hidden = !res?.after;
-  box.innerHTML = res?.after
-    ? `<h3>${esc(t('afterTitle'))}</h3>
-       <p><strong>${esc(res.after.title)}</strong></p>
-       <p>${esc(res.after.text)}</p>`
-    : '';
-
-  const list = (title, items) => `<h3>${esc(title)}</h3><ul>${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
-  const parts = [];
-  if (res?.strengths?.length) parts.push(list(t('strengthsTitle'), res.strengths));
-  if (res?.observations?.length) parts.push(list(t('observationsTitle'), res.observations));
-  if (res?.uncertainties?.length) parts.push(list(t('uncertaintiesTitle'), res.uncertainties));
-  if (res?.disagreement) parts.push(`<h3>${esc(t('disagreementTitle'))}</h3><p class="quiet">${esc(res.disagreement)}</p>`);
-  extra.innerHTML = parts.join('');
+  $('disagreement').textContent = res?.disagreement ? `${t('disagreementTitle')}: ${res.disagreement}` : '';
 }
 
 // ---------------------------------------------------------------- dela
@@ -586,7 +622,7 @@ async function withButton(btn, working, run) {
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = working;
-  $('sharenote').textContent = t('shareNote');   // raden hör till den här delningen, inte förra
+  $('sharenote').textContent = '';   // raden hör till den här delningen, inte förra
   try {
     await run();
   } catch {
@@ -599,10 +635,13 @@ async function withButton(btn, working, run) {
 
 const notesFor = data => ({ speed: speedNote(data), caveat: caveatNote(data) });
 
+// Raden under knapparna säger bara något när det behövs: blev det delningsrutan syns den
+// redan, blev det en nedladdning eller urklipp måste användaren få veta var filen tog vägen.
 $('share-image').addEventListener('click', e => withButton(e.currentTarget, t('shareWorking'), async () => {
   const ready = card && card.lang === getLang() ? (card.blob || await card.job) : null;
   const blob = ready || await shareImage(last, notesFor(last));
-  await deliver(blob, stamp('jpg'), `Emitto – ${t('tag')}`);
+  const how = await deliver(blob, stamp('jpg'), `Emitto – ${t('tag')}`);
+  $('sharenote').textContent = how === 'downloaded' ? t('shareImageSaved') : '';
 }));
 
 // Texten kan inte förberedas i förväg av samma skäl som bilden måste det: den är klar direkt.
@@ -612,7 +651,7 @@ $('share-text').addEventListener('click', e => withButton(e.currentTarget, t('sh
   // texten tog vägen – annars ser det ut som att knappen inte gjorde något.
   $('sharenote').textContent = how === 'copied' ? t('shareCopied')
     : how === 'downloaded' ? t('shareDownloaded')
-    : t('shareNote');
+    : '';
 }));
 
 function buildDots(wrap) {
