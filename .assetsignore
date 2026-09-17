@@ -28,3 +28,6 @@ test-units.mjs
 worker
 .dev.vars
 .dev.vars.example
+
+# Prototypen av resultatvyn. Hör hemma i repot som underlag, inte på domänen.
+prototype

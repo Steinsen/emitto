@@ -157,8 +157,28 @@ Tre vyer i samma sida, ingen router: `#view-start` → `#view-loading` → `#vie
 startar av sig själv när en fil valts – ingen knapp. Under laddningen studsar en boll och
 progressbaren fylls av seek-loopen.
 
-Resultatvyn har faserna som en svepbar rad. Tryck på ett kort ritar ut vinklarna i leden med
-färg efter status och listar fasens mätvärden mot riktvärdet.
+**Resultatvyn svarar innan den visar.** Ordningen är: svarsrutan, faserna, att jobba på, det
+som händer efter släppet, dela, och sist en hopfälld fotnot. Sex block – förr var de tolv, och
+flera av dem sa samma sak: `goodNote`, modellens `summary` och dess `strengths` var tre
+varianter av "det här är bra" i rad, och hastighet, delning, förbehåll och osäkerhet var fyra
+texter om mätningen på fyra ställen i flödet.
+
+`#verdict` överst är rubriken på listans första post plus `summary` när djupanalysen skrivit en.
+Utan modellen står bara rubriken: posten säger själv vad man ska göra en rad längre ner, och
+samma mening två gånger gör den inte sannare. Prickarna i rutan är mätvärdenas status i listans
+ordning – det är där "säg först vad som är bra" tar vägen, som färg och siffra i stället för
+som en mening till.
+
+Faserna är en svepbar rad. Vinklarna ritas direkt på kortet och står i listan under bilden;
+knappen som skulle tryckas först var ett steg mellan användaren och det hon kom för.
+Riktvärdena står inte på korten utan i fotnoten, en gång, som en skala.
+
+Listan visar `what` – en mening om vad man ska göra – redan hopfälld, och första posten står
+öppen. Peppningen (`pep`) följer med i den delade texten men inte till skärmen: som fjärde
+stycke i en post lästes den inte.
+
+Fotnoten `#about` ("Om mätningen") har hastigheten, alla mätvärden med skala, modellens
+`uncertainties` och förbehållet. Allt som är om mätningen och inte om skottet.
 
 **Fasrutan klipps runt spelaren** (`personCrop`, ruta 3:4), samma utsnitt som delningsbilden.
 Hela bildrutan såg riktig ut på ett närbildsklipp men inte på ett filmat från läktaren: är
@@ -196,8 +216,9 @@ med båda, men mottagarappen väljer, och de tar bilden och slänger texten.
 
 Bilden går ut genom `deliver()` (Web Share med fil, annars nedladdning) och texten genom
 `deliverText()`: delningsrutan med ren text om den finns – då hamnar den som ett vanligt
-meddelande som går att svara på – annars urklipp, annars en `.txt`. Vilken väg det blev syns i
-raden under knapparna, annars ser det ut som att inget hände.
+meddelande som går att svara på – annars urklipp, annars en `.txt`. Blev det urklipp eller en fil syns det i
+raden under knapparna, annars ser det ut som att inget hände. Öppnades delningsrutan står raden
+tom – rutan syns ju.
 Ingen av vägarna passerar en server. Bilderna kommer från rutor som redan är avlästa, och
 det är användaren som väljer att skicka dem – löftet gäller klippet, och klippet skickas
 aldrig.
@@ -222,7 +243,9 @@ Två saker är inte godtyckliga:
 `PRIORITY` är rörelsekedjan nedifrån och upp: knädjup → tid → knä vid släpp → bållutning →
 armbåge → släpphöjd. Första avvikelsen vinner, om inte en senare avviker mer än dubbelt så
 mycket – då lyfts den först. `issueList` ger max 5 och fyller aldrig ut listan med påhittade
-fel: finns två avvikelser blir listan två lång. Prioriteringen är deterministisk och ska förbli
+fel: finns två avvikelser blir listan två lång. Varje post har en `what` – en mening i imperativ
+om vad man ska göra – och det är den enda texten som står framme utan att posten öppnas. Skriver
+modellen en egen `what` läggs den ovanpå genom `merge()`; rubriken ensam duger inte på skärmen. Prioriteringen är deterministisk och ska förbli
 det – en LLM får formulera, aldrig välja. Det är inte bara en instruktion i prompten:
 `worker/index.js` kastar svaret om `priority.key` inte är `issues[0].key` eller om `secondary`
 inte följer resten i ordning, och `merge()` i `coach.js` vägrar lägga modellens ord på en post
@@ -277,6 +300,14 @@ på längsta sidan. Klippet lämnar aldrig enheten.
 Kryssrutan som lät användaren välja bort dem är borttagen på begäran. Det betyder att bilder på
 spelaren laddas upp utan att någon tillfrågas – vill du ha valet tillbaka är det `collectFrames`
 i `coach.js` och en kryssruta i `index.html` som ska tillbaka, inget annat.
+
+**Var modellens fält hamnar.** `summary` i svarsrutan. `priority` och `secondary` som ord på
+listans poster (aldrig som egna poster). `after` i sin egen ruta, med `observations` inlagda i
+samma stycke – båda handlar om det `rules.js` inte mäter, och en egen rubrik för en enda punkt
+blev en rubrik för mycket. `uncertainties` i fotnoten. `disagreement` nedtonat under listan.
+`strengths` visas inte längre någonstans: prickarna och `summary` säger redan det, och tre
+varianter av samma sak i rad var en av de saker som gjorde resultatet långt. Fältet ligger kvar
+i svaret – ta bort det ur `worker/prompt.js` först när något annat inte behöver det.
 
 **Allt visas på en gång, när allt är klart.** Anropet till workern görs medan laddningsvyn står
 kvar, och resultatvyn ritas först när svaret kommit. Bollen studsar hela tiden, och texten under
@@ -336,8 +367,9 @@ desamma, det är bara orden som är de generella. Appen ska gå att använda hel
 Bläck `#10262E`, boll `#FF6A2B`, yta `#EAF0F2`. Orange används bara där något händer
 (primärknapp, logotypens spår, etta i listan, plustecknen) – inte som dekoration. Barlow Condensed för rubriker
 och siffror, Barlow för brödtext, båda självhostade i `fonts/`. Inga externa anrop utöver
-MediaPipe. Lågmäld ton på båda språken. Listan inleds alltid med vad som ligger inom
-riktvärdena – aldrig en rad fel utan att först säga vad som är bra.
+MediaPipe. Lågmäld ton på båda språken. Resultatet inleds alltid med vad som ligger inom
+riktvärdena – numera som prickarna och raden i svarsrutan, aldrig en rad fel utan att först
+säga vad som är bra.
 
 ## Att inte göra
 
